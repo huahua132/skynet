@@ -132,6 +132,15 @@ skynet.start(function()
 		socket.start(id)
 		skynet.fork(console_main_loop, id , print, addr)
 	end)
+
+	skynet.dispatch('lua',function(_,_,cmd,...)
+		local func = COMMAND[cmd]
+		if not func then
+			skynet.retpack("not cmd:" .. tostring(cmd))
+		else
+			skynet.retpack(func(...))
+		end
+	end)
 end)
 
 function COMMAND.help()
