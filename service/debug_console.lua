@@ -92,7 +92,6 @@ end
 
 
 local function console_main_loop(stdin, addr)
-	httpd.write_response(sockethelper.writefunc(stdin),200,"Welcome to skynet console\n")
 	local bodystr = ""
 	local function print(...)
 		local t = { ... }
