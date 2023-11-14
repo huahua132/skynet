@@ -89,11 +89,22 @@ local function docmd(cmdline, print, fd)
 	end
 end
 
-local function console_main_loop(stdin, print, addr)
-	print("Welcome to skynet console")
+
+
+local function console_main_loop(stdin, addr)
+	httpd.write_response(sockethelper.writefunc(stdin),200,"Welcome to skynet console\n")
+	local bodystr = ""
+	local function print(...)
+		local t = { ... }
+		for k,v in ipairs(t) do
+			t[k] = tostring(v)
+		end
+		bodystr = bodystr .. table.concat(t,"\t") .. '\n'
+	end
 	skynet.error(addr, "connected")
 	local ok, err = pcall(function()
 		while true do
+			bodystr = ""
 			local cmdline = socket.readline(stdin, "\n")
 			if not cmdline then
 				break
@@ -103,10 +114,12 @@ local function console_main_loop(stdin, print, addr)
 				local code, url = httpd.read_request(sockethelper.readfunc(stdin, cmdline.. "\n"), 8192)
 				local cmdline = url:sub(2):gsub("/"," ")
 				docmd(cmdline, print, stdin)
+				httpd.write_response(sockethelper.writefunc(stdin),200,bodystr)
 				break
 			end
 			if cmdline ~= "" then
 				docmd(cmdline, print, stdin)
+				httpd.write_response(sockethelper.writefunc(stdin),200,bodystr)
 			end
 		end
 	end)
@@ -121,16 +134,8 @@ skynet.start(function()
 	local listen_socket, ip, port = socket.listen (ip, port)
 	skynet.error("Start debug console at " .. ip .. ":" .. port)
 	socket.start(listen_socket , function(id, addr)
-		local function print(...)
-			local t = { ... }
-			for k,v in ipairs(t) do
-				t[k] = tostring(v)
-			end
-			socket.write(id, table.concat(t,"\t"))
-			socket.write(id, "\n")
-		end
 		socket.start(id)
-		skynet.fork(console_main_loop, id , print, addr)
+		skynet.fork(console_main_loop, id , addr)
 	end)
 
 	skynet.dispatch('lua',function(_,_,cmd,...)
