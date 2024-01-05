@@ -29,7 +29,7 @@ function test_auth()
 	local db = c[db_name]
 	db:auth(username, password)
 
-	db.testcoll:dropIndex("*")
+	db.testcoll:drop_index("*")
 	db.testcoll:drop()
 
 	ok, err, ret = db.testcoll:safe_insert({test_key = 1});
@@ -44,7 +44,7 @@ function test_insert_without_index()
 	local c = _create_client()
 	local db = c[db_name]
 
-	db.testcoll:dropIndex("*")
+	db.testcoll:drop_index("*")
 	db.testcoll:drop()
 
 	ok, err, ret = db.testcoll:safe_insert({test_key = 1});
@@ -59,10 +59,10 @@ function test_insert_with_index()
 	local c = _create_client()
 	local db = c[db_name]
 
-	db.testcoll:dropIndex("*")
+	db.testcoll:drop_index("*")
 	db.testcoll:drop()
 
-	db.testcoll:ensureIndex({test_key = 1}, {unique = true, name = "test_key_index"})
+	db.testcoll:ensure_index({test_key = 1}, {unique = true, name = "test_key_index"})
 
 	ok, err, ret = db.testcoll:safe_insert({test_key = 1})
 	assert(ok and ret and ret.n == 1, err)
@@ -76,19 +76,19 @@ function test_find_and_remove()
 	local c = _create_client()
 	local db = c[db_name]
 
-	db.testcoll:dropIndex("*")
+	db.testcoll:drop_index("*")
 	db.testcoll:drop()
 
 	local cursor = db.testcoll:find()
-	assert(cursor:hasNext() == false)
+	assert(cursor:has_next() == false)
 
-	db.testcoll:ensureIndex({test_key = 1}, {test_key2 = -1}, {unique = true, name = "test_index"})
+	db.testcoll:ensure_index({test_key = 1}, {test_key2 = -1}, {unique = true, name = "test_index"})
 
 	ok, err, ret = db.testcoll:safe_insert({test_key = 1, test_key2 = 1})
 	assert(ok and ret and ret.n == 1, err)
 
 	cursor = db.testcoll:find()
-	assert(cursor:hasNext() == true)
+	assert(cursor:has_next() == true)
 	local v = cursor:next()
 	assert(v)
 	assert(v.test_key == 1)
@@ -99,13 +99,13 @@ function test_find_and_remove()
 	ok, err, ret = db.testcoll:safe_insert({test_key = 2, test_key2 = 3})
 	assert(ok and ret and ret.n == 1, err)
 
-	ret = db.testcoll:findOne({test_key2 = 1})
+	ret = db.testcoll:find_one({test_key2 = 1})
 	assert(ret and ret.test_key2 == 1, err)
 
 	ret = db.testcoll:find({test_key2 = {['$gt'] = 0}}):sort({test_key = 1}, {test_key2 = -1}):skip(1):limit(1)
 	assert(ret:count() == 3)
 	assert(ret:count(true) == 1)
-	if ret:hasNext() then
+	if ret:has_next() then
 		ret = ret:next()
 	end
 	assert(ret and ret.test_key2 == 1)
@@ -113,16 +113,16 @@ function test_find_and_remove()
 	db.testcoll:delete({test_key = 1})
 	db.testcoll:delete({test_key = 2})
 
-	ret = db.testcoll:findOne({test_key = 1})
+	ret = db.testcoll:find_one({test_key = 1})
 	assert(ret == nil)
 end
 
-function test_runcommand()
+function test_run_command()
 	local ok, err, ret
 	local c = _create_client()
 	local db = c[db_name]
 
-	db.testcoll:dropIndex("*")
+	db.testcoll:drop_index("*")
 	db.testcoll:drop()
 
 	ok, err, ret = db.testcoll:safe_insert({test_key = 1, test_key2 = 1})
@@ -143,7 +143,7 @@ function test_runcommand()
 			}
 		}
 	}
-	ret = db:runCommand("aggregate", "testcoll", "pipeline", pipeline, "cursor", {})
+	ret = db:run_command("aggregate", "testcoll", "pipeline", pipeline, "cursor", {})
 	assert(ret and ret.cursor.firstBatch[1].test_key_total == 4)
 	assert(ret and ret.cursor.firstBatch[1].test_key2_total == 6)
 end
@@ -153,22 +153,22 @@ function test_expire_index()
 	local c = _create_client()
 	local db = c[db_name]
 
-	db.testcoll:dropIndex("*")
+	db.testcoll:drop_index("*")
 	db.testcoll:drop()
 
-	db.testcoll:ensureIndex({test_key = 1}, {unique = true, name = "test_key_index", expireAfterSeconds = 1, })
-	db.testcoll:ensureIndex({test_date = 1}, {expireAfterSeconds = 1, })
+	db.testcoll:ensure_index({test_key = 1}, {unique = true, name = "test_key_index", expireAfterSeconds = 1, })
+	db.testcoll:ensure_index({test_date = 1}, {expireAfterSeconds = 1, })
 
 	ok, err, ret = db.testcoll:safe_insert({test_key = 1, test_date = bson.date(os.time())})
 	assert(ok and ret and ret.n == 1, err)
 
-	ret = db.testcoll:findOne({test_key = 1})
+	ret = db.testcoll:find_one({test_key = 1})
 	assert(ret and ret.test_key == 1)
 
 	for i = 1, 60 do
 		skynet.sleep(100);
 		print("check expire", i)
-		ret = db.testcoll:findOne({test_key = 1})
+		ret = db.testcoll:find_one({test_key = 1})
 		if ret == nil then
 			return
 		end
@@ -232,8 +232,8 @@ skynet.start(function()
 	test_insert_with_index()
 	print("Test find and remove")
 	test_find_and_remove()
-	print("Test runCommand")
-	test_runcommand()
+	print("Test run_command")
+	test_run_command()
 	print("Test expire index")
 	test_expire_index()
 	print("test safe batch insert")

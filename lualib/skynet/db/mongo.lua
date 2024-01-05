@@ -37,7 +37,7 @@ local mongo_client = {}
 
 local client_meta =	{
 	__index	= function(self, key)
-		return rawget(mongo_client,	key) or	self:getDB(key)
+		return rawget(mongo_client,	key) or	self:get_db(key)
 	end,
 	__tostring = function (self)
 		local port_string
@@ -56,7 +56,7 @@ local mongo_db = {}
 
 local db_meta =	{
 	__index	= function (self, key)
-		return rawget(mongo_db,	key) or	self:getCollection(key)
+		return rawget(mongo_db,	key) or	self:get_collection(key)
 	end,
 	__tostring = function (self)
 		return "[mongo db :	" .. self.name .. "]"
@@ -66,7 +66,7 @@ local db_meta =	{
 local mongo_collection = {}
 local collection_meta =	{
 	__index	= function(self, key)
-		return rawget(mongo_collection,	key) or	self:getCollection(key)
+		return rawget(mongo_collection,	key) or	self:get_collection(key)
 	end	,
 	__tostring = function (self)
 		return "[mongo collection :	" .. self.full_name	.. "]"
@@ -97,7 +97,7 @@ local function mongo_auth(mongoc)
 	authmod = "auth_" ..  authmod
 	local authdb = rawget(mongoc, "authdb")
 	if authdb then
-		authdb = mongo_client.getDB(mongoc, authdb)	-- mongoc has not set metatable yet
+		authdb = mongo_client.get_db(mongoc, authdb)	-- mongoc has not set metatable yet
 	end
 
 	return function()
@@ -107,7 +107,7 @@ local function mongo_auth(mongoc)
 			assert(auth_func , "Invalid authmod")
 			assert(auth_func(authdb or mongoc, user, pass))
 		end
-		local rs_data =	mongoc:runCommand("ismaster")
+		local rs_data =	mongoc:run_command("ismaster")
 		if rs_data.ok == 1 then
 			if rs_data.hosts then
 				local backup = {}
@@ -163,7 +163,7 @@ function mongo.client( conf	)
 	return obj
 end
 
-function mongo_client:getDB(dbname)
+function mongo_client:get_db(dbname)
 	local db = {
 		connection = self,
 		name = dbname,
@@ -184,28 +184,28 @@ function mongo_client:disconnect()
 	end
 end
 
-function mongo_client:genId()
+function mongo_client:genid()
 	local id = self.__id + 1
 	self.__id =	id
 	return id
 end
 
-function mongo_client:runCommand(...)
+function mongo_client:run_command(...)
 	if not self.admin then
-		self.admin = self:getDB	"admin"
+		self.admin = self:get_db	"admin"
 	end
-	return self.admin:runCommand(...)
+	return self.admin:run_command(...)
 end
 
 function auth_method:auth_mongodb_cr(user,password)
 	local password = md5.sumhexa(string.format("%s:mongo:%s",user,password))
-	local result= self:runCommand "getnonce"
+	local result= self:run_command "getnonce"
 	if result.ok ~=1 then
 		return false
 	end
 
 	local key =	md5.sumhexa(string.format("%s%s%s",result.nonce,user,password))
-	local result= self:runCommand ("authenticate",1,"user",user,"nonce",result.nonce,"key",key)
+	local result= self:run_command ("authenticate",1,"user",user,"nonce",result.nonce,"key",key)
 	return result.ok ==	1
 end
 
@@ -227,7 +227,7 @@ function auth_method:auth_scram_sha1(username,password)
 	local sasl_start_payload = crypt.base64encode("n,," .. first_bare)
 	local r
 
-	r = self:runCommand("saslStart",1,"autoAuthorize",1,"mechanism","SCRAM-SHA-1","payload",sasl_start_payload)
+	r = self:run_command("saslStart",1,"autoAuthorize",1,"mechanism","SCRAM-SHA-1","payload",sasl_start_payload)
 	if r.ok ~= 1 then
 		return false
 	end
@@ -260,7 +260,7 @@ function auth_method:auth_scram_sha1(username,password)
 	local server_key = crypt.hmac_sha1(salted_pass, "Server Key")
 	local server_sig = crypt.base64encode(crypt.hmac_sha1(server_key, auth_msg))
 
-	r = self:runCommand("saslContinue",1,"conversationId",conversationId,"payload",client_final)
+	r = self:run_command("saslContinue",1,"conversationId",conversationId,"payload",client_final)
 	if r.ok ~= 1 then
 		return false
 	end
@@ -274,7 +274,7 @@ function auth_method:auth_scram_sha1(username,password)
 		return false
 	end
 	if not r.done then
-		r = self:runCommand("saslContinue",1,"conversationId",conversationId,"payload","")
+		r = self:run_command("saslContinue",1,"conversationId",conversationId,"payload","")
 		if r.ok ~= 1 then
 			return false
 		end
@@ -287,7 +287,7 @@ function auth_method:auth_scram_sha1(username,password)
 end
 
 function mongo_client:logout()
-	local result = self:runCommand "logout"
+	local result = self:run_command "logout"
 	return result.ok ==	1
 end
 
@@ -298,9 +298,9 @@ function mongo_db:auth(user, pass)
 	return auth_func(self, user, pass)
 end
 
-function mongo_db:runCommand(cmd,cmd_v,...)
+function mongo_db:run_command(cmd,cmd_v,...)
 	local conn = self.connection
-	local request_id = conn:genId()
+	local request_id = conn:genid()
 	local sock = conn.__sock
 	local bson_cmd
 	if not cmd_v then
@@ -320,7 +320,7 @@ end
 --- send command without response
 function mongo_db:send_command(cmd, cmd_v, ...)
 	local conn = self.connection
-	local request_id = conn:genId()
+	local request_id = conn:genid()
 	local sock = conn.__sock
 	local bson_cmd
 	if not cmd_v then
@@ -335,7 +335,7 @@ function mongo_db:send_command(cmd, cmd_v, ...)
 	return {ok=1} -- fake successful response
 end
 
-function mongo_db:getCollection(collection)
+function mongo_db:get_collection(collection)
 	local col =	{
 		connection = self.connection,
 		name = collection,
@@ -346,7 +346,7 @@ function mongo_db:getCollection(collection)
 	return col
 end
 
-mongo_collection.getCollection = mongo_db.getCollection
+mongo_collection.get_collection = mongo_db.get_collection
 
 function mongo_collection:insert(doc)
 	if doc._id == nil then
@@ -372,12 +372,12 @@ local function werror(r)
 end
 
 function mongo_collection:safe_insert(doc)
-	local r = self.database:runCommand("insert", self.name, "documents", {bson_encode(doc)})
+	local r = self.database:run_command("insert", self.name, "documents", {bson_encode(doc)})
 	return werror(r)
 end
 
 function mongo_collection:raw_safe_insert(doc)
-	local r = self.database:runCommand("insert", self.name, "documents", {doc})
+	local r = self.database:run_command("insert", self.name, "documents", {doc})
 	return werror(r)
 end
 
@@ -402,7 +402,7 @@ function mongo_collection:safe_batch_insert(docs)
 		docs[i] = bson_encode(docs[i])
 	end
 
-	local r = self.database:runCommand("insert", self.name, "documents", docs)
+	local r = self.database:run_command("insert", self.name, "documents", docs)
 	return werror(r)
 end
 
@@ -418,7 +418,7 @@ function mongo_collection:update(query,update,upsert,multi)
 end
 
 function mongo_collection:safe_update(query, update, upsert, multi)
-	local r = self.database:runCommand("update", self.name, "updates", {bson_encode({
+	local r = self.database:run_command("update", self.name, "updates", {bson_encode({
 		q = query,
 		u = update,
 		upsert = upsert,
@@ -452,12 +452,12 @@ function mongo_collection:safe_batch_update(updates)
 		})
 	end
 
-	local r = self.database:runCommand("update", self.name, "updates", updates_tb)
+	local r = self.database:run_command("update", self.name, "updates", updates_tb)
 	return werror(r)
 end
 
 function mongo_collection:raw_safe_update(update)
-	local r = self.database:runCommand("update", self.name, "updates", {update})
+	local r = self.database:run_command("update", self.name, "updates", {update})
 	return werror(r)
 end
 
@@ -469,7 +469,7 @@ function mongo_collection:delete(query, single)
 end
 
 function mongo_collection:safe_delete(query, single)
-	local r = self.database:runCommand("delete", self.name, "deletes", {bson_encode({
+	local r = self.database:run_command("delete", self.name, "deletes", {bson_encode({
 		q = query,
 		limit = single and 1 or 0,
 	})})
@@ -484,17 +484,17 @@ function mongo_collection:safe_batch_delete(deletes, single)
 			limit = single and 1 or 0,
 		})
 	end
-	local r = self.database:runCommand("delete", self.name, "deletes", delete_tb)
+	local r = self.database:run_command("delete", self.name, "deletes", delete_tb)
 	return werror(r)
 end
 
 function mongo_collection:raw_safe_delete(delete)
-	local r = self.database:runCommand("delete", self.name, "deletes", {delete})
+	local r = self.database:run_command("delete", self.name, "deletes", {delete})
 	return werror(r)
 end
 
-function mongo_collection:findOne(query, projection)
-	local r = self.database:runCommand("find", self.name, "filter", query and bson_encode(query) or empty_bson,
+function mongo_collection:find_one(query, projection)
+	local r = self.database:run_command("find", self.name, "filter", query and bson_encode(query) or empty_bson,
 		"limit", 1, "projection", projection and bson_encode(projection) or empty_bson)
 	if r.ok ~= 1 then
 		error(r.errmsg or "Reply from mongod error")
@@ -551,10 +551,10 @@ end
 function mongo_cursor:count(with_limit_and_skip)
 	local ret
 	if with_limit_and_skip then
-		ret = self.__collection.database:runCommand('count', self.__collection.name, 'query', self.__query,
+		ret = self.__collection.database:run_command('count', self.__collection.name, 'query', self.__query,
 			'limit', self.__limit, 'skip', self.__skip)
 	else
-		ret = self.__collection.database:runCommand('count', self.__collection.name, 'query', self.__query)
+		ret = self.__collection.database:run_command('count', self.__collection.name, 'query', self.__query)
 	end
 	assert(ret and ret.ok == 1)
 	return ret.n
@@ -562,7 +562,7 @@ end
 
 
 -- For compatibility.
--- collection:createIndex({username = 1}, {unique = true})
+-- collection:create_index({username = 1}, {unique = true})
 local function createIndex_onekey(self, key, option)
 	local doc = {}
 	for k,v in pairs(option) do
@@ -573,11 +573,11 @@ local function createIndex_onekey(self, key, option)
 	doc.name = doc.name or (k .. "_" .. v)
 	doc.key = key
 
-	return self.database:runCommand("createIndexes", self.name, "indexes", {doc})
+	return self.database:run_command("createIndexes", self.name, "indexes", {doc})
 end
 
 
-local function IndexModel(option)
+local function Index_model(option)
 	local doc = {}
 	for k,v in pairs(option) do
 		if type(k) == "string" then
@@ -608,38 +608,38 @@ local function IndexModel(option)
 	return doc
 end
 
--- collection:createIndex { { key1 = 1}, { key2 = 1 },  unique = true }
--- or collection:createIndex { "key1", "key2",  unique = true }
--- or collection:createIndex( { key1 = 1} , { unique = true } )	-- For compatibility
-function mongo_collection:createIndex(arg1 , arg2)
+-- collection:create_index { { key1 = 1}, { key2 = 1 },  unique = true }
+-- or collection:create_index { "key1", "key2",  unique = true }
+-- or collection:create_index( { key1 = 1} , { unique = true } )	-- For compatibility
+function mongo_collection:create_index(arg1 , arg2)
 	if arg2 then
 		return createIndex_onekey(self, arg1, arg2)
 	else
-		return self.database:runCommand("createIndexes", self.name, "indexes", { IndexModel(arg1) })
+		return self.database:run_command("createIndexes", self.name, "indexes", { Index_model(arg1) })
 	end
 end
 
-function mongo_collection:createIndexes(...)
+function mongo_collection:create_indexes(...)
 	local idx = { ... }
 	for k,v in ipairs(idx) do
-		idx[k] = IndexModel(v)
+		idx[k] = Index_model(v)
 	end
-	return self.database:runCommand("createIndexes", self.name, "indexes", idx)
+	return self.database:run_command("createIndexes", self.name, "indexes", idx)
 end
 
-mongo_collection.ensureIndex = mongo_collection.createIndex
+mongo_collection.ensure_index = mongo_collection.create_index
 
 function mongo_collection:drop()
-	return self.database:runCommand("drop", self.name)
+	return self.database:run_command("drop", self.name)
 end
 
--- collection:dropIndex("age_1")
--- collection:dropIndex("*")
-function mongo_collection:dropIndex(indexName)
-	return self.database:runCommand("dropIndexes", self.name, "index", indexName)
+-- collection:drop_index("age_1")
+-- collection:drop_index("*")
+function mongo_collection:drop_index(indexName)
+	return self.database:run_command("dropIndexes", self.name, "index", indexName)
 end
 
--- collection:findAndModify({query = {name = "userid"}, update = {["$inc"] = {nextid = 1}}, })
+-- collection:find_and_modify({query = {name = "userid"}, update = {["$inc"] = {nextid = 1}}, })
 -- keys, value type
 -- query, table
 -- sort, table
@@ -648,7 +648,7 @@ end
 -- new, bool
 -- fields, bool
 -- upsert, boolean
-function mongo_collection:findAndModify(doc)
+function mongo_collection:find_and_modify(doc)
 	assert(doc.query)
 	assert(doc.update or doc.remove)
 
@@ -657,7 +657,7 @@ function mongo_collection:findAndModify(doc)
 		table.insert(cmd, k)
 		table.insert(cmd, v)
 	end
-	return self.database:runCommand(table.unpack(cmd))
+	return self.database:run_command(table.unpack(cmd))
 end
 
 -- https://docs.mongodb.com/manual/reference/command/aggregate/
@@ -690,7 +690,7 @@ function mongo_collection:aggregate(pipeline, options)
 	} ,	aggregate_cursor_meta)
 end
 
-function mongo_cursor:hasNext()
+function mongo_cursor:has_next()
 	if self.__ptr == nil then
 		if self.__document == nil then
 			return false
@@ -700,12 +700,12 @@ function mongo_cursor:hasNext()
 		local database = self.__collection.database
 		if self.__data == nil then
 			local name = self.__collection.name
-			response = database:runCommand("find", name, "filter", self.__query, "sort", self.__sort,
+			response = database:run_command("find", name, "filter", self.__query, "sort", self.__sort,
 				"skip", self.__skip, "limit", self.__limit, "projection", self.__projection)
 		else
 			if self.__cursor  and self.__cursor > 0 then
 				local name = self.__collection.name
-				response = database:runCommand("getMore", bson_int64(self.__cursor), "collection", name)
+				response = database:run_command("getMore", bson_int64(self.__cursor), "collection", name)
 			else
 				-- no more
 				self.__document	= nil
@@ -750,7 +750,7 @@ end
 
 function mongo_cursor:next()
 	if self.__ptr == nil then
-		error "Call	hasNext	first"
+		error "Call	has_next	first"
 	end
 	local r	= self.__document[self.__ptr]
 	self.__ptr = self.__ptr	+ 1
@@ -805,10 +805,10 @@ function aggregate_cursor:count(with_limit_and_skip)
 	local name = self.__collection.name
 	local database = self.__collection.database
 	if self.__options then
-		ret = database:runCommand("aggregate", name, "pipeline", format_pipeline(self, with_limit_and_skip, true),
+		ret = database:run_command("aggregate", name, "pipeline", format_pipeline(self, with_limit_and_skip, true),
 			table.unpack(self.__options))
 	else
-		ret = database:runCommand("aggregate", name, "pipeline", format_pipeline(self, with_limit_and_skip, true),
+		ret = database:run_command("aggregate", name, "pipeline", format_pipeline(self, with_limit_and_skip, true),
 			"cursor", empty_bson)
 	end
 	if ret.ok ~= 1 then
@@ -817,7 +817,7 @@ function aggregate_cursor:count(with_limit_and_skip)
 	return ret.cursor.firstBatch[1].__count
 end
 
-function aggregate_cursor:hasNext()
+function aggregate_cursor:has_next()
 	if self.__ptr == nil then
 		if self.__document == nil then
 			return false
@@ -827,13 +827,13 @@ function aggregate_cursor:hasNext()
 		local database = self.__collection.database
 		if self.__data == nil then
 			if self.__options then
-				ret = database:runCommand("aggregate", name, "pipeline", format_pipeline(self, true), table.unpack(self.__options))
+				ret = database:run_command("aggregate", name, "pipeline", format_pipeline(self, true), table.unpack(self.__options))
 			else
-				ret = database:runCommand("aggregate", name, "pipeline", format_pipeline(self, true), "cursor", empty_bson)
+				ret = database:run_command("aggregate", name, "pipeline", format_pipeline(self, true), "cursor", empty_bson)
 			end
 		else
 			if self.__cursor  and self.__cursor > 0 then
-				ret = database:runCommand("getMore", bson_int64(self.__cursor), "collection", name)
+				ret = database:run_command("getMore", bson_int64(self.__cursor), "collection", name)
 			else
 				-- no more
 				self.__document	= nil

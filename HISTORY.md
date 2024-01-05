@@ -116,7 +116,7 @@ v1.0.0-rc4 (2016-6-13)
 * Update jemalloc to 4.2.1
 * Add debug console command ping
 * Lua bson support __pairs
-* Add mongo.createIndexes and fix bug in old mongo.createIndex
+* Add mongo.create_indexes and fix bug in old mongo.create_index
 * Handle signal HUP to reopen log file (for logrotate)
 
 v1.0.0-rc3 (2016-5-9)
@@ -264,7 +264,7 @@ v1.0.0-alpha (2015-3-9)
 
 v0.9.3 (2015-1-5)
 -----------
-* Add : mongo createIndex
+* Add : mongo create_index
 * Update : sproto
 * bugfix : sharedata check dirty flag when len/pairs metamethod
 * bugfix : multicast
