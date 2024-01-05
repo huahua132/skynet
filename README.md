@@ -6,41 +6,8 @@ Skynet is a multi-user Lua framework supporting the actor model, often used in g
 
 The community is friendly and almost contributors can speak English, so English speakers are welcome to ask questions in [Discussion](https://github.com/cloudwu/skynet/discussions), or sumbit issues in English.
 
-## Build
+# skynet_fly使用的skynet维护版本，对skynet做了一些优化改动
 
-For Linux, install autoconf first for jemalloc:
-
-```
-git clone https://github.com/cloudwu/skynet.git
-cd skynet
-make 'PLATFORM'  # PLATFORM can be linux, macosx, freebsd now
-```
-
-Or:
-
-```
-export PLAT=linux
-make
-```
-
-For FreeBSD , use gmake instead of make.
-
-## Test
-
-Run these in different consoles:
-
-```
-./skynet examples/config	# Launch first skynet node  (Gate server) and a skynet-master (see config for standalone option)
-./3rd/lua/lua examples/client.lua 	# Launch a client, and try to input hello.
-```
-
-## About Lua version
-
-Skynet now uses a modified version of lua 5.4.6 ( https://github.com/ejoy/lua/tree/skynet54 ) for multiple lua states.
-
-Official Lua versions can also be used as long as the Makefile is edited.
-
-## How To Use
-
-* Read Wiki for documents https://github.com/cloudwu/skynet/wiki (Written in both English and Chinese)
-* The FAQ in wiki https://github.com/cloudwu/skynet/wiki/FAQ (In Chinese, but you can visit them using something like Google or Deepl translate.)
+1. 增加快进时间debug调用。
+2. 修改debug_console使用协议从http0.9升级为http1.1。
+3. 优化mongoAPI代码风格，统一成下划线。
