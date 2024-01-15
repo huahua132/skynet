@@ -36,7 +36,6 @@ skynet_setenv(const char *key, const char *value) {
 	
 	lua_State *L = E->L;
 	lua_getglobal(L, key);
-	assert(lua_isnil(L, -1));
 	lua_pop(L,1);
 	lua_pushstring(L,value);
 	lua_setglobal(L,key);
