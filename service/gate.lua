@@ -71,11 +71,7 @@ end
 local CMD = {}
 
 function CMD.forward(source, fd, client, address)
-	if not connection[fd] then
-		skynet.error("forward not exists fd = ", fd)
-		return
-	end
-	local c = connection[fd]
+	local c = assert(connection[fd])
 	unforward(c)
 	c.client = client or 0
 	c.agent = address or source
