@@ -1,6 +1,8 @@
 local skynet = require "skynet"
 local gateserver = require "snax.gateserver"
 
+local assert = assert
+
 local watchdog
 local connection = {}	-- fd -> connection : { fd , client, agent , ip, mode }
 
@@ -71,11 +73,15 @@ end
 local CMD = {}
 
 function CMD.forward(source, fd, client, address)
-	local c = assert(connection[fd])
+	if not connection[fd] then
+		return false
+	end
+	local c = connection[fd]
 	unforward(c)
 	c.client = client or 0
 	c.agent = address or source
 	gateserver.openclient(fd)
+	return true
 end
 
 function CMD.accept(source, fd)
