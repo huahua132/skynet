@@ -121,12 +121,8 @@ local function test_find_and_remove()
 	ret = db.testcoll:find_one({test_key = 1})
 	assert(ret == nil)
 end
-
-<<<<<<< HEAD
-function test_run_command()
-=======
-local function test_runcommand()
->>>>>>> origin/skynet
+ 
+local function test_run_command()
 	local ok, err, ret
 	local c = _create_client()
 	local db = c[db_name]
