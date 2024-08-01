@@ -11,3 +11,5 @@ The community is friendly and almost all contributors can speak English, so Engl
 1. 增加快进时间debug调用。
 2. 修改debug_console使用协议从http0.9升级为http1.1。
 3. 优化mongoAPI代码风格，统一成下划线。
+4. gate forward 命令断言检查改为返回true or false。
+5. skynet.lua 去掉对`coroutine.create`函数的局部引用。 `local coroutine_create = coroutine.create`，因为不去掉`luaPanda.lua`重写`coroutine.create`无法起效。
