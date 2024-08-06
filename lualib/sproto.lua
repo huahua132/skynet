@@ -51,7 +51,7 @@ end
 local function querytype(self, typename)
 	local v = self.__tcache[typename]
 	if not v then
-		v = assert(core.querytype(self.__cobj, typename), "type not found")
+		v = assert(core.querytype(self.__cobj, typename), "type not found : " .. typename)
 		self.__tcache[typename] = v
 	end
 
