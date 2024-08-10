@@ -115,7 +115,13 @@ local function console_main_loop(stdin, addr)
 				docmd(cmdline, print, stdin)
 				httpd.write_response(sockethelper.writefunc(stdin),200,bodystr)
 				break
+			elseif cmdline:sub(1,5) == "POST " then
+				-- http post
+				local code, url, method, header, body = httpd.read_request(sockethelper.readfunc(stdin, cmdline.. "\n"), 8192)
+				docmd(body, print, stdin)
+				break
 			end
+			
 			if cmdline ~= "" then
 				docmd(cmdline, print, stdin)
 				httpd.write_response(sockethelper.writefunc(stdin),200,bodystr)
@@ -180,6 +186,8 @@ function COMMAND.help()
 		killtask = "killtask address threadname : threadname listed by task",
 		dbgcmd = "run address debug command",
 		fasttime = "fast forward time to specified timestamp",
+		getenv = "getenv name : skynet.getenv(name)",
+		setenv = "setenv name value: skynet.setenv(name,value)",
 	}
 end
 
@@ -495,4 +503,12 @@ function COMMAND.fasttime(timestamp,once_add)
 		return "fasttime faild"
 	end
 	return string.format("fasttime to %s",os.date("%Y%m%d-%H:%M:%S",timestamp))
+end
+function COMMAND.getenv(name)
+	local value = skynet.getenv(name)
+	return {[name]=tostring(value)}
+end
+
+function COMMAND.setenv(name,value)
+	return skynet.setenv(name,value)
 end
