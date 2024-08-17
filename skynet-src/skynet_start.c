@@ -234,7 +234,7 @@ thread_worker(void *p) {
 
 static void
 start(int thread) {
-	pthread_t pid[thread+3];
+	pthread_t pid[thread+4];
 
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	M = m;
