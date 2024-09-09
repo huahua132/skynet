@@ -2,6 +2,7 @@ local skynet = require "skynet"
 local gateserver = require "snax.gateserver"
 
 local assert = assert
+local tinsert = table.insert
 
 local watchdog
 local connection = {}	-- fd -> connection : { fd , client, agent , ip, mode }
@@ -24,7 +25,16 @@ function handler.message(fd, msg, sz)
 	local agent = c.agent
 	if agent then
 		-- It's safe to redirect msg directly , gateserver framework will not free msg.
-		skynet.redirect(agent, c.client, "client", fd, msg, sz)
+		if c.is_pause then
+			if not c.msg_que then
+				c.msg_que = {}
+			end
+
+			tinsert(c.msg_que, skynet.tostring(msg, sz))
+			skynet.trash(msg,sz)
+		else
+			skynet.redirect(agent, c.client, "client", fd, msg, sz)
+		end
 	else
 		skynet.send(watchdog, "lua", "socket", "data", fd, skynet.tostring(msg, sz))
 		-- skynet.tostring will copy msg to a string, so we must free msg here.
@@ -92,6 +102,40 @@ end
 
 function CMD.kick(source, fd)
 	gateserver.closeclient(fd)
+end
+
+function CMD.pause(source, fd)
+	if not connection[fd] then
+		return false
+	end
+	local c = connection[fd]
+	c.is_pause = true
+
+	return true
+end
+
+function CMD.play(source, fd)
+	if not connection[fd] then
+		return false
+	end
+	local c = connection[fd]
+	c.is_pause = nil
+
+	local msg_que = c.msg_que
+	if msg_que then
+		local agent = c.agent
+		for i = 1, #msg_que do
+			if agent then
+				skynet.redirect(agent, c.client, "client", fd, msg_que[i])
+			else
+				skynet.send(watchdog, "lua", "socket", "data", fd, msg_que[i])
+			end
+		end
+
+		c.msg_que = nil
+	end
+
+	return true
 end
 
 function handler.command(cmd, source, ...)
