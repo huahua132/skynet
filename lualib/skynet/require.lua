@@ -108,6 +108,7 @@ end
 function M.init(f)
 	assert(type(f) == "function")
 	local co = coroutine.running()
+	if not context[co] then return end
 	table.insert(context[co], f)
 end
 
