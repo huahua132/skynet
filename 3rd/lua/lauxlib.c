@@ -1293,6 +1293,8 @@ cache_clear(lua_State *L) {
 	return 0;
 }
 
+int luaopen_cache(lua_State *L);
+
 LUAMOD_API int luaopen_cache(lua_State *L) {
 	luaL_Reg l[] = {
 		{ "clear", cache_clear },
@@ -1303,4 +1305,528 @@ LUAMOD_API int luaopen_cache(lua_State *L) {
 	lua_getglobal(L, "loadfile");
 	lua_setfield(L, -2, "loadfile");
 	return 1;
+}
+
+//代码加密
+#define ENCRY_KEY "qwer1234"
+#define SMALL_CHUNK 256
+#define PADDING_MODE_ISO7816_4 0
+#define PADDING_MODE_PKCS7 1
+#define PADDING_MODE_COUNT 2
+
+/* the eight DES S-boxes */
+
+static uint32_t SB1[64] = {
+	0x01010400, 0x00000000, 0x00010000, 0x01010404,
+	0x01010004, 0x00010404, 0x00000004, 0x00010000,
+	0x00000400, 0x01010400, 0x01010404, 0x00000400,
+	0x01000404, 0x01010004, 0x01000000, 0x00000004,
+	0x00000404, 0x01000400, 0x01000400, 0x00010400,
+	0x00010400, 0x01010000, 0x01010000, 0x01000404,
+	0x00010004, 0x01000004, 0x01000004, 0x00010004,
+	0x00000000, 0x00000404, 0x00010404, 0x01000000,
+	0x00010000, 0x01010404, 0x00000004, 0x01010000,
+	0x01010400, 0x01000000, 0x01000000, 0x00000400,
+	0x01010004, 0x00010000, 0x00010400, 0x01000004,
+	0x00000400, 0x00000004, 0x01000404, 0x00010404,
+	0x01010404, 0x00010004, 0x01010000, 0x01000404,
+	0x01000004, 0x00000404, 0x00010404, 0x01010400,
+	0x00000404, 0x01000400, 0x01000400, 0x00000000,
+	0x00010004, 0x00010400, 0x00000000, 0x01010004
+};
+
+static uint32_t SB2[64] = {
+	0x80108020, 0x80008000, 0x00008000, 0x00108020,
+	0x00100000, 0x00000020, 0x80100020, 0x80008020,
+	0x80000020, 0x80108020, 0x80108000, 0x80000000,
+	0x80008000, 0x00100000, 0x00000020, 0x80100020,
+	0x00108000, 0x00100020, 0x80008020, 0x00000000,
+	0x80000000, 0x00008000, 0x00108020, 0x80100000,
+	0x00100020, 0x80000020, 0x00000000, 0x00108000,
+	0x00008020, 0x80108000, 0x80100000, 0x00008020,
+	0x00000000, 0x00108020, 0x80100020, 0x00100000,
+	0x80008020, 0x80100000, 0x80108000, 0x00008000,
+	0x80100000, 0x80008000, 0x00000020, 0x80108020,
+	0x00108020, 0x00000020, 0x00008000, 0x80000000,
+	0x00008020, 0x80108000, 0x00100000, 0x80000020,
+	0x00100020, 0x80008020, 0x80000020, 0x00100020,
+	0x00108000, 0x00000000, 0x80008000, 0x00008020,
+	0x80000000, 0x80100020, 0x80108020, 0x00108000
+};
+
+static uint32_t SB3[64] = {
+	0x00000208, 0x08020200, 0x00000000, 0x08020008,
+	0x08000200, 0x00000000, 0x00020208, 0x08000200,
+	0x00020008, 0x08000008, 0x08000008, 0x00020000,
+	0x08020208, 0x00020008, 0x08020000, 0x00000208,
+	0x08000000, 0x00000008, 0x08020200, 0x00000200,
+	0x00020200, 0x08020000, 0x08020008, 0x00020208,
+	0x08000208, 0x00020200, 0x00020000, 0x08000208,
+	0x00000008, 0x08020208, 0x00000200, 0x08000000,
+	0x08020200, 0x08000000, 0x00020008, 0x00000208,
+	0x00020000, 0x08020200, 0x08000200, 0x00000000,
+	0x00000200, 0x00020008, 0x08020208, 0x08000200,
+	0x08000008, 0x00000200, 0x00000000, 0x08020008,
+	0x08000208, 0x00020000, 0x08000000, 0x08020208,
+	0x00000008, 0x00020208, 0x00020200, 0x08000008,
+	0x08020000, 0x08000208, 0x00000208, 0x08020000,
+	0x00020208, 0x00000008, 0x08020008, 0x00020200
+};
+
+static uint32_t SB4[64] = {
+	0x00802001, 0x00002081, 0x00002081, 0x00000080,
+	0x00802080, 0x00800081, 0x00800001, 0x00002001,
+	0x00000000, 0x00802000, 0x00802000, 0x00802081,
+	0x00000081, 0x00000000, 0x00800080, 0x00800001,
+	0x00000001, 0x00002000, 0x00800000, 0x00802001,
+	0x00000080, 0x00800000, 0x00002001, 0x00002080,
+	0x00800081, 0x00000001, 0x00002080, 0x00800080,
+	0x00002000, 0x00802080, 0x00802081, 0x00000081,
+	0x00800080, 0x00800001, 0x00802000, 0x00802081,
+	0x00000081, 0x00000000, 0x00000000, 0x00802000,
+	0x00002080, 0x00800080, 0x00800081, 0x00000001,
+	0x00802001, 0x00002081, 0x00002081, 0x00000080,
+	0x00802081, 0x00000081, 0x00000001, 0x00002000,
+	0x00800001, 0x00002001, 0x00802080, 0x00800081,
+	0x00002001, 0x00002080, 0x00800000, 0x00802001,
+	0x00000080, 0x00800000, 0x00002000, 0x00802080
+};
+
+static uint32_t SB5[64] = {
+	0x00000100, 0x02080100, 0x02080000, 0x42000100,
+	0x00080000, 0x00000100, 0x40000000, 0x02080000,
+	0x40080100, 0x00080000, 0x02000100, 0x40080100,
+	0x42000100, 0x42080000, 0x00080100, 0x40000000,
+	0x02000000, 0x40080000, 0x40080000, 0x00000000,
+	0x40000100, 0x42080100, 0x42080100, 0x02000100,
+	0x42080000, 0x40000100, 0x00000000, 0x42000000,
+	0x02080100, 0x02000000, 0x42000000, 0x00080100,
+	0x00080000, 0x42000100, 0x00000100, 0x02000000,
+	0x40000000, 0x02080000, 0x42000100, 0x40080100,
+	0x02000100, 0x40000000, 0x42080000, 0x02080100,
+	0x40080100, 0x00000100, 0x02000000, 0x42080000,
+	0x42080100, 0x00080100, 0x42000000, 0x42080100,
+	0x02080000, 0x00000000, 0x40080000, 0x42000000,
+	0x00080100, 0x02000100, 0x40000100, 0x00080000,
+	0x00000000, 0x40080000, 0x02080100, 0x40000100
+};
+
+static uint32_t SB6[64] = {
+	0x20000010, 0x20400000, 0x00004000, 0x20404010,
+	0x20400000, 0x00000010, 0x20404010, 0x00400000,
+	0x20004000, 0x00404010, 0x00400000, 0x20000010,
+	0x00400010, 0x20004000, 0x20000000, 0x00004010,
+	0x00000000, 0x00400010, 0x20004010, 0x00004000,
+	0x00404000, 0x20004010, 0x00000010, 0x20400010,
+	0x20400010, 0x00000000, 0x00404010, 0x20404000,
+	0x00004010, 0x00404000, 0x20404000, 0x20000000,
+	0x20004000, 0x00000010, 0x20400010, 0x00404000,
+	0x20404010, 0x00400000, 0x00004010, 0x20000010,
+	0x00400000, 0x20004000, 0x20000000, 0x00004010,
+	0x20000010, 0x20404010, 0x00404000, 0x20400000,
+	0x00404010, 0x20404000, 0x00000000, 0x20400010,
+	0x00000010, 0x00004000, 0x20400000, 0x00404010,
+	0x00004000, 0x00400010, 0x20004010, 0x00000000,
+	0x20404000, 0x20000000, 0x00400010, 0x20004010
+};
+
+static uint32_t SB7[64] = {
+	0x00200000, 0x04200002, 0x04000802, 0x00000000,
+	0x00000800, 0x04000802, 0x00200802, 0x04200800,
+	0x04200802, 0x00200000, 0x00000000, 0x04000002,
+	0x00000002, 0x04000000, 0x04200002, 0x00000802,
+	0x04000800, 0x00200802, 0x00200002, 0x04000800,
+	0x04000002, 0x04200000, 0x04200800, 0x00200002,
+	0x04200000, 0x00000800, 0x00000802, 0x04200802,
+	0x00200800, 0x00000002, 0x04000000, 0x00200800,
+	0x04000000, 0x00200800, 0x00200000, 0x04000802,
+	0x04000802, 0x04200002, 0x04200002, 0x00000002,
+	0x00200002, 0x04000000, 0x04000800, 0x00200000,
+	0x04200800, 0x00000802, 0x00200802, 0x04200800,
+	0x00000802, 0x04000002, 0x04200802, 0x04200000,
+	0x00200800, 0x00000000, 0x00000002, 0x04200802,
+	0x00000000, 0x00200802, 0x04200000, 0x00000800,
+	0x04000002, 0x04000800, 0x00000800, 0x00200002
+};
+
+static uint32_t SB8[64] = {
+	0x10001040, 0x00001000, 0x00040000, 0x10041040,
+	0x10000000, 0x10001040, 0x00000040, 0x10000000,
+	0x00040040, 0x10040000, 0x10041040, 0x00041000,
+	0x10041000, 0x00041040, 0x00001000, 0x00000040,
+	0x10040000, 0x10000040, 0x10001000, 0x00001040,
+	0x00041000, 0x00040040, 0x10040040, 0x10041000,
+	0x00001040, 0x00000000, 0x00000000, 0x10040040,
+	0x10000040, 0x10001000, 0x00041040, 0x00040000,
+	0x00041040, 0x00040000, 0x10041000, 0x00001000,
+	0x00000040, 0x10040040, 0x00001000, 0x00041040,
+	0x10001000, 0x00000040, 0x10000040, 0x10040000,
+	0x10040040, 0x10000000, 0x00040000, 0x10001040,
+	0x00000000, 0x10041040, 0x00040040, 0x10000040,
+	0x10040000, 0x10001000, 0x10001040, 0x00000000,
+	0x10041040, 0x00041000, 0x00041000, 0x00001040,
+	0x00001040, 0x00040040, 0x10000000, 0x10041000
+};
+
+/* PC1: left and right halves bit-swap */
+
+static uint32_t LHs[16] = {
+	0x00000000, 0x00000001, 0x00000100, 0x00000101,
+	0x00010000, 0x00010001, 0x00010100, 0x00010101,
+	0x01000000, 0x01000001, 0x01000100, 0x01000101,
+	0x01010000, 0x01010001, 0x01010100, 0x01010101
+};
+
+static uint32_t RHs[16] = {
+	0x00000000, 0x01000000, 0x00010000, 0x01010000,
+	0x00000100, 0x01000100, 0x00010100, 0x01010100,
+	0x00000001, 0x01000001, 0x00010001, 0x01010001,
+	0x00000101, 0x01000101, 0x00010101, 0x01010101,
+};
+
+/* platform-independant 32-bit integer manipulation macros */
+
+#define GET_UINT32(n,b,i)					   \
+{											   \
+	(n) = ( (uint32_t) (b)[(i)	] << 24 )	   \
+		| ( (uint32_t) (b)[(i) + 1] << 16 )	   \
+		| ( (uint32_t) (b)[(i) + 2] <<  8 )	   \
+		| ( (uint32_t) (b)[(i) + 3]	   );	  \
+}
+
+#define PUT_UINT32(n,b,i)					   \
+{											   \
+	(b)[(i)	] = (uint8_t) ( (n) >> 24 );	   \
+	(b)[(i) + 1] = (uint8_t) ( (n) >> 16 );	   \
+	(b)[(i) + 2] = (uint8_t) ( (n) >>  8 );	   \
+	(b)[(i) + 3] = (uint8_t) ( (n)	   );	   \
+}
+
+/* Initial Permutation macro */
+
+#define DES_IP(X,Y)											 \
+{															   \
+	T = ((X >>  4) ^ Y) & 0x0F0F0F0F; Y ^= T; X ^= (T <<  4);   \
+	T = ((X >> 16) ^ Y) & 0x0000FFFF; Y ^= T; X ^= (T << 16);   \
+	T = ((Y >>  2) ^ X) & 0x33333333; X ^= T; Y ^= (T <<  2);   \
+	T = ((Y >>  8) ^ X) & 0x00FF00FF; X ^= T; Y ^= (T <<  8);   \
+	Y = ((Y << 1) | (Y >> 31)) & 0xFFFFFFFF;					\
+	T = (X ^ Y) & 0xAAAAAAAA; Y ^= T; X ^= T;				   \
+	X = ((X << 1) | (X >> 31)) & 0xFFFFFFFF;					\
+}
+
+/* Final Permutation macro */
+
+#define DES_FP(X,Y)											 \
+{															   \
+	X = ((X << 31) | (X >> 1)) & 0xFFFFFFFF;					\
+	T = (X ^ Y) & 0xAAAAAAAA; X ^= T; Y ^= T;				   \
+	Y = ((Y << 31) | (Y >> 1)) & 0xFFFFFFFF;					\
+	T = ((Y >>  8) ^ X) & 0x00FF00FF; X ^= T; Y ^= (T <<  8);   \
+	T = ((Y >>  2) ^ X) & 0x33333333; X ^= T; Y ^= (T <<  2);   \
+	T = ((X >> 16) ^ Y) & 0x0000FFFF; Y ^= T; X ^= (T << 16);   \
+	T = ((X >>  4) ^ Y) & 0x0F0F0F0F; Y ^= T; X ^= (T <<  4);   \
+}
+
+/* DES round macro */
+
+#define DES_ROUND(X,Y)						  \
+{											   \
+	T = *SK++ ^ X;							  \
+	Y ^= SB8[ (T	  ) & 0x3F ] ^			  \
+		 SB6[ (T >>  8) & 0x3F ] ^			  \
+		 SB4[ (T >> 16) & 0x3F ] ^			  \
+		 SB2[ (T >> 24) & 0x3F ];			   \
+												\
+	T = *SK++ ^ ((X << 28) | (X >> 4));		 \
+	Y ^= SB7[ (T	  ) & 0x3F ] ^			  \
+		 SB5[ (T >>  8) & 0x3F ] ^			  \
+		 SB3[ (T >> 16) & 0x3F ] ^			  \
+		 SB1[ (T >> 24) & 0x3F ];			   \
+}
+
+/* DES key schedule */
+
+static void 
+des_main_ks( uint32_t SK[32], const uint8_t key[8] ) {
+	int i;
+	uint32_t X, Y, T;
+
+	GET_UINT32( X, key, 0 );
+	GET_UINT32( Y, key, 4 );
+
+	/* Permuted Choice 1 */
+
+	T =  ((Y >>  4) ^ X) & 0x0F0F0F0F;  X ^= T; Y ^= (T <<  4);
+	T =  ((Y	  ) ^ X) & 0x10101010;  X ^= T; Y ^= (T	  );
+
+	X =   (LHs[ (X	  ) & 0xF] << 3) | (LHs[ (X >>  8) & 0xF ] << 2)
+		| (LHs[ (X >> 16) & 0xF] << 1) | (LHs[ (X >> 24) & 0xF ]	 )
+		| (LHs[ (X >>  5) & 0xF] << 7) | (LHs[ (X >> 13) & 0xF ] << 6)
+		| (LHs[ (X >> 21) & 0xF] << 5) | (LHs[ (X >> 29) & 0xF ] << 4);
+
+	Y =   (RHs[ (Y >>  1) & 0xF] << 3) | (RHs[ (Y >>  9) & 0xF ] << 2)
+		| (RHs[ (Y >> 17) & 0xF] << 1) | (RHs[ (Y >> 25) & 0xF ]	 )
+		| (RHs[ (Y >>  4) & 0xF] << 7) | (RHs[ (Y >> 12) & 0xF ] << 6)
+		| (RHs[ (Y >> 20) & 0xF] << 5) | (RHs[ (Y >> 28) & 0xF ] << 4);
+
+	X &= 0x0FFFFFFF;
+	Y &= 0x0FFFFFFF;
+
+	/* calculate subkeys */
+
+	for( i = 0; i < 16; i++ )
+	{
+		if( i < 2 || i == 8 || i == 15 )
+		{
+			X = ((X <<  1) | (X >> 27)) & 0x0FFFFFFF;
+			Y = ((Y <<  1) | (Y >> 27)) & 0x0FFFFFFF;
+		}
+		else
+		{
+			X = ((X <<  2) | (X >> 26)) & 0x0FFFFFFF;
+			Y = ((Y <<  2) | (Y >> 26)) & 0x0FFFFFFF;
+		}
+
+		*SK++ =   ((X <<  4) & 0x24000000) | ((X << 28) & 0x10000000)
+				| ((X << 14) & 0x08000000) | ((X << 18) & 0x02080000)
+				| ((X <<  6) & 0x01000000) | ((X <<  9) & 0x00200000)
+				| ((X >>  1) & 0x00100000) | ((X << 10) & 0x00040000)
+				| ((X <<  2) & 0x00020000) | ((X >> 10) & 0x00010000)
+				| ((Y >> 13) & 0x00002000) | ((Y >>  4) & 0x00001000)
+				| ((Y <<  6) & 0x00000800) | ((Y >>  1) & 0x00000400)
+				| ((Y >> 14) & 0x00000200) | ((Y	  ) & 0x00000100)
+				| ((Y >>  5) & 0x00000020) | ((Y >> 10) & 0x00000010)
+				| ((Y >>  3) & 0x00000008) | ((Y >> 18) & 0x00000004)
+				| ((Y >> 26) & 0x00000002) | ((Y >> 24) & 0x00000001);
+
+		*SK++ =   ((X << 15) & 0x20000000) | ((X << 17) & 0x10000000)
+				| ((X << 10) & 0x08000000) | ((X << 22) & 0x04000000)
+				| ((X >>  2) & 0x02000000) | ((X <<  1) & 0x01000000)
+				| ((X << 16) & 0x00200000) | ((X << 11) & 0x00100000)
+				| ((X <<  3) & 0x00080000) | ((X >>  6) & 0x00040000)
+				| ((X << 15) & 0x00020000) | ((X >>  4) & 0x00010000)
+				| ((Y >>  2) & 0x00002000) | ((Y <<  8) & 0x00001000)
+				| ((Y >> 14) & 0x00000808) | ((Y >>  9) & 0x00000400)
+				| ((Y	  ) & 0x00000200) | ((Y <<  7) & 0x00000100)
+				| ((Y >>  7) & 0x00000020) | ((Y >>  3) & 0x00000011)
+				| ((Y <<  2) & 0x00000004) | ((Y >> 21) & 0x00000002);
+	}
+}
+
+/* DES 64-bit block encryption/decryption */
+
+static void 
+des_crypt( const uint32_t SK[32], const uint8_t input[8], uint8_t output[8] ) {
+	uint32_t X, Y, T;
+
+	GET_UINT32( X, input, 0 );
+	GET_UINT32( Y, input, 4 );
+
+	DES_IP( X, Y );
+
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+	DES_ROUND( Y, X );  DES_ROUND( X, Y );
+
+	DES_FP( Y, X );
+
+	PUT_UINT32( Y, output, 0 );
+	PUT_UINT32( X, output, 4 );
+}
+
+typedef void (*padding_add)(uint8_t buf[8], int offset);
+typedef int (*padding_remove)(const uint8_t *last);
+
+static void
+padding_add_iso7816_4(uint8_t buf[8], int offset) {
+	buf[offset] = 0x80;
+	memset(buf+offset+1, 0, 7-offset);
+}
+
+static int
+padding_remove_iso7816_4(const uint8_t *last) {
+	int padding = 1;
+	int i;
+	for (i=0;i<8;i++,last--) {
+		if (*last == 0) {
+			padding++;
+		} else if (*last == 0x80) {
+			return padding;
+		} else {
+			break;
+		}
+	}
+	// invalid
+	return 0;
+}
+
+static void
+padding_add_pkcs7(uint8_t buf[8], int offset) {
+	uint8_t x = 8-offset;
+	memset(buf+offset, x, 8-offset);
+}
+
+static int
+padding_remove_pkcs7(const uint8_t *last) {
+	int padding = *last;
+	int i;
+	for (i=1;i<padding;i++) {
+		--last;
+		if (*last != padding)
+			return 0;	// invalid
+	}
+	return padding;
+}
+
+static padding_add padding_add_func[] = {
+	padding_add_iso7816_4,
+	padding_add_pkcs7,
+};
+
+static padding_remove padding_remove_func[] = {
+	padding_remove_iso7816_4,
+	padding_remove_pkcs7,
+};
+
+static inline void
+check_padding_mode(lua_State *L, int mode) {
+	if (mode < 0 || mode >= PADDING_MODE_COUNT)
+		luaL_error(L, "Invalid padding mode %d", mode);
+}
+
+static void
+add_padding(lua_State *L, uint8_t buf[8], const uint8_t *src, int offset, int mode) {
+	check_padding_mode(L, mode);
+	if (offset >= 8)
+		luaL_error(L, "Invalid padding");
+	memcpy(buf, src, offset);
+	padding_add_func[mode](buf, offset);
+}
+
+static int
+remove_padding(lua_State *L, const uint8_t *last, int mode) {
+	check_padding_mode(L, mode);
+	return padding_remove_func[mode](last);
+}
+
+static void
+des_key(lua_State *L, uint32_t SK[32]) {
+	size_t keysz = 0;
+	const void * key = luaL_checklstring(L, 1, &keysz);
+	if (keysz != 8) {
+		luaL_error(L, "Invalid key size %d, need 8 bytes", (int)keysz);
+	}
+	des_main_ks(SK, (const uint8_t*)key);
+}
+
+static int
+ldesencode(lua_State *L) {
+	uint32_t SK[32];
+	des_key(L, SK);
+
+	size_t textsz = 0;
+	const uint8_t * text = (const uint8_t *)luaL_checklstring(L, 2, &textsz);
+	size_t chunksz = (textsz + 8) & ~7;
+	int padding_mode = luaL_optinteger(L, 3, PADDING_MODE_ISO7816_4);
+	uint8_t tmp[SMALL_CHUNK];
+	uint8_t *buffer = tmp;
+	if (chunksz > SMALL_CHUNK) {
+		buffer = (uint8_t*)lua_newuserdatauv(L, chunksz, 0);
+	}
+	int i;
+	for (i=0;i<(int)textsz-7;i+=8) {
+		des_crypt(SK, text+i, buffer+i);
+	}
+	uint8_t tail[8];
+	add_padding(L, tail, text+i, textsz - i, padding_mode);
+	des_crypt(SK, tail, buffer+i);
+	lua_pushlstring(L, (const char *)buffer, chunksz);
+
+	return 1;
+}
+
+static int
+ldesdecode(lua_State *L) {
+	uint32_t ESK[32];
+	des_key(L, ESK);
+	uint32_t SK[32];
+	int i;
+	for( i = 0; i < 32; i += 2 ) {
+		SK[i] = ESK[30 - i];
+		SK[i + 1] = ESK[31 - i];
+	}
+	size_t textsz = 0;
+	const uint8_t *text = (const uint8_t *)luaL_checklstring(L, 2, &textsz);
+	if ((textsz & 7) || textsz == 0) {
+		return luaL_error(L, "Invalid des crypt text length %d", (int)textsz);
+	}
+	int padding_mode = luaL_optinteger(L, 3, PADDING_MODE_ISO7816_4);
+	uint8_t tmp[SMALL_CHUNK];
+	uint8_t *buffer = tmp;
+	if (textsz > SMALL_CHUNK) {
+		buffer = (uint8_t*)lua_newuserdatauv(L, textsz, 0);
+	}
+	for (i=0;i<textsz;i+=8) {
+		des_crypt(SK, text+i, buffer+i);
+	}
+	int padding = remove_padding(L, buffer + textsz - 1, padding_mode);
+	if (padding <= 0 || padding > 8) {
+		return luaL_error(L, "Invalid des crypt text");
+	}
+	lua_pushlstring(L, (const char *)buffer, textsz - padding);
+	return 1;
+}
+
+LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *mode) {
+  //printf("luaL_loadfilex file[%s]\n", filename);
+    //说明是正常代码文件
+  if (luaL_loadfilex(L, filename, "t") == LUA_OK) {
+    return LUA_OK;
+  }
+  // 打开文件
+  FILE* fp = fopen(filename, "r");
+  if (!fp) {
+    lua_pushfstring(L, "can`t open %s", filename);
+    return LUA_ERRFILE;
+  }
+  // 获取文件大小
+  fseek(fp, 0, SEEK_END);
+  size_t fileSize = ftell(fp);
+  rewind(fp);
+  // 读取数据
+  char* encryptedData = (char*)malloc(fileSize);
+  fread(encryptedData, 1, fileSize, fp);
+  fclose(fp);
+
+  //printf("use decrpt file[%s] [%s]\n", filename, ENCRY_KEY);
+  // 解密数据
+  lua_settop(L, 0);  //清空占
+  lua_pushlstring(L, ENCRY_KEY, 8);
+  lua_pushlstring(L, encryptedData, fileSize);
+  ldesdecode(L);
+
+  size_t decryptedSize = 0;
+  //printf("use decrpt2 file[%s]\n", filename);
+  char *decryptedData;
+  if (lua_isuserdata(L, 3)) {
+    decryptedData = (const char *)luaL_checklstring(L, 4, &decryptedSize);
+  } else {
+    decryptedData = (const char *)luaL_checklstring(L, 3, &decryptedSize);
+  }
+
+  //printf("decryptedData >>> %s %d\n", decryptedData, decryptedSize);
+  // 使用解密后的数据载入 Lua 函数
+  if(luaL_loadbuffer(L, decryptedData, decryptedSize, filename) != LUA_OK) {
+    free(encryptedData);
+    return lua_error(L);
+  }
+
+  free(encryptedData);
+  return LUA_OK;
 }
