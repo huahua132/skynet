@@ -266,3 +266,9 @@ skynet_handle_init(int harbor) {
 	// Don't need to free H
 }
 
+
+void 
+skynet_handle_set_index(uint32_t handle) {
+	struct handle_storage *s = H;
+	s->handle_index = handle;
+}

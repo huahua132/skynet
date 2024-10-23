@@ -298,3 +298,14 @@ skynet_thread_time(void) {
 
 	return (uint64_t)ti.tv_sec * MICROSEC + (uint64_t)ti.tv_nsec / (NANOSEC / MICROSEC);
 }
+
+//for record
+void
+skynet_timer_setstarttime(uint32_t time) {
+	TI->starttime = time;
+}
+
+void
+skynet_timer_setcurrent(uint64_t current) {
+	TI->current = current;
+}

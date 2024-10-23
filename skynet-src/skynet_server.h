@@ -1,6 +1,7 @@
 #ifndef SKYNET_SERVER_H
 #define SKYNET_SERVER_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -27,5 +28,21 @@ void skynet_globalexit(void);
 void skynet_initthread(int m);
 
 void skynet_profile_enable(int enable);
+
+//record
+FILE* skynet_context_recordfile(struct skynet_context * context);
+
+void skynet_record_push_session(int session);
+int skynet_record_pop_session();
+void skynet_record_push_handle(uint32_t handle);
+uint32_t skynet_record_pop_handle();
+void skynet_record_push_socketid(int id);
+int skynet_record_pop_socketid();
+void skynet_record_push_mathseek(int64_t x, int64_t y);
+int64_t skynet_record_pop_mathseek();
+void skynet_record_push_ostime(uint32_t ostime);
+uint32_t skynet_record_pop_ostime();
+void skynet_record_push_nowtime(int64_t ostime);
+int64_t skynet_record_pop_nowtime();
 
 #endif

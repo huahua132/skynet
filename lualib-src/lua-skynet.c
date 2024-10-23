@@ -1,6 +1,8 @@
 #define LUA_LIB
 
 #include "skynet.h"
+#include "skynet_server.h"
+#include "skynet_record.h"
 #include "lua-seri.h"
 
 #define KNRM  "\x1B[0m"
@@ -501,6 +503,87 @@ ltrace(lua_State *L) {
 	return 0;
 }
 
+static int
+lrecordgenid(lua_State *L) {
+	int session = skynet_record_pop_session();
+	//skynet_error(NULL, "pop session:%d\n", session);
+	lua_pushinteger(L, session);
+	return 1;
+}
+
+static int
+lrecordhandle(lua_State *L) {
+	uint32_t handle = skynet_record_pop_handle();
+	lua_pushinteger(L, handle);
+	return 1;
+}
+
+static int
+lrecordsocketid(lua_State *L) {
+	int socketid = skynet_record_pop_socketid();
+	lua_pushinteger(L, socketid);
+	return 1;
+}
+
+static int
+lrecordrandomseed(lua_State *L) {
+	int64_t x = skynet_record_pop_mathseek();
+	int64_t y = skynet_record_pop_mathseek();
+	lua_pushinteger(L, x);
+	lua_pushinteger(L, y);
+	return 2;
+}
+
+static int
+lrecordsetrandomseed(lua_State *L) {
+	int64_t x = luaL_checkinteger(L, 1);
+	int64_t y = luaL_checkinteger(L, 2);
+	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	FILE *rf = skynet_context_recordfile(context);
+	if (rf) {
+		skynet_record_randseed(context, rf, x, y);
+	}
+	return 0;
+}
+
+static int
+lrecordgetostime(lua_State *L) {
+	uint32_t ostime = skynet_record_pop_ostime();
+	lua_pushinteger(L, ostime);
+	return 1;
+}
+
+static int
+lrecordsetostime(lua_State *L) {
+	uint32_t ostime = luaL_checkinteger(L, 1);
+	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	FILE *rf = skynet_context_recordfile(context);
+	if (rf) {
+		skynet_record_ostime(context, rf, ostime);
+	}
+	return 0;
+}
+
+static int
+lrecordgetnowtime(lua_State *L) {
+	int64_t nowtime = skynet_record_pop_nowtime();
+	printf("lrecordgetnowtime >>> %llu\n", nowtime);
+	lua_pushinteger(L, nowtime);
+	return 1;
+}
+
+static int
+lrecordsetnowtime(lua_State *L) {
+	int64_t now = luaL_checkinteger(L, 1);
+	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	FILE *rf = skynet_context_recordfile(context);
+	if (rf) {
+		skynet_record_nowtime(context, rf, now);
+	}
+	printf("lrecordsetnowtime >>> %llu\n", now);
+	return 0;
+}
+
 LUAMOD_API int
 luaopen_skynet_core(lua_State *L) {
 	luaL_checkversion(L);
@@ -516,6 +599,15 @@ luaopen_skynet_core(lua_State *L) {
 		{ "harbor", lharbor },
 		{ "callback", lcallback },
 		{ "trace", ltrace },
+		{ "recordgenid", lrecordgenid },
+		{ "recordhandle", lrecordhandle },
+		{ "recordsocketid", lrecordsocketid },
+		{ "recordrandomseed", lrecordrandomseed },
+		{ "recordsetrandomseed", lrecordsetrandomseed },
+		{ "recordgetostime", lrecordgetostime },
+		{ "recordsetostime", lrecordsetostime },
+		{ "recordgetnowtime", lrecordgetnowtime },
+		{ "recordsetnowtime", lrecordsetnowtime },
 		{ NULL, NULL },
 	};
 

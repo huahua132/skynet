@@ -11,4 +11,8 @@ void skynet_time_fast(uint32_t addtime);
 
 void skynet_timer_init(void);
 
+//录像用
+void skynet_timer_setstarttime(uint32_t time);
+void skynet_timer_setcurrent(uint64_t current);
+
 #endif

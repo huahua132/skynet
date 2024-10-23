@@ -161,6 +161,7 @@ main(int argc, char *argv[]) {
 	config.logger = optstring("logger", NULL);
 	config.logservice = optstring("logservice", "logger");
 	config.profile = optboolean("profile", 1);
+	config.recordfile = optstring("recordfile", "");
 
 	skynet_start(&config);
 	skynet_globalexit();

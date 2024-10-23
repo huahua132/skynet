@@ -10,6 +10,7 @@
 #include "skynet_monitor.h"
 #include "skynet_imp.h"
 #include "skynet_log.h"
+#include "skynet_record.h"
 #include "spinlock.h"
 #include "atomic.h"
 
@@ -46,6 +47,7 @@ struct skynet_context {
 	skynet_cb cb;
 	struct message_queue *queue;
 	ATOM_POINTER logfile;
+	ATOM_POINTER recordfile;
 	uint64_t cpu_cost;	// in microsec
 	uint64_t cpu_start;	// in microsec
 	char result[32];
@@ -69,6 +71,15 @@ struct skynet_node {
 };
 
 static struct skynet_node G_NODE;
+
+//record
+
+static struct record_intque *G_SESSION_Q = NULL;
+static struct record_intque *G_HANDLE_Q = NULL;
+static struct record_intque *G_SOCKETID_Q = NULL;
+static struct record_intque *G_MATHSEEK_Q = NULL;
+static struct record_intque *G_OSTIME_Q = NULL;
+static struct record_intque *G_NOWTIME_Q = NULL;
 
 int 
 skynet_context_total() {
@@ -141,6 +152,7 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->cb_ud = NULL;
 	ctx->session_id = 0;
 	ATOM_INIT(&ctx->logfile, (uintptr_t)NULL);
+	ATOM_INIT(&ctx->recordfile, (uintptr_t)NULL);
 
 	ctx->init = false;
 	ctx->endless = false;
@@ -188,6 +200,12 @@ skynet_context_newsession(struct skynet_context *ctx) {
 		ctx->session_id = 1;
 		return 1;
 	}
+
+	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
+	if (rf) {
+		skynet_record_newsession(ctx, rf, session);
+	}
+
 	return session;
 }
 
@@ -209,6 +227,10 @@ delete_context(struct skynet_context *ctx) {
 	FILE *f = (FILE *)ATOM_LOAD(&ctx->logfile);
 	if (f) {
 		fclose(f);
+	}
+	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
+	if (rf) {
+		fclose(rf);
 	}
 	skynet_module_instance_release(ctx->mod, ctx->instance);
 	skynet_mq_mark_release(ctx->queue);
@@ -267,6 +289,10 @@ dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	FILE *f = (FILE *)ATOM_LOAD(&ctx->logfile);
 	if (f) {
 		skynet_log_output(f, msg->source, type, msg->session, msg->data, sz);
+	}
+	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
+	if (rf) {
+		skynet_record_output(ctx, rf, msg->source, type, msg->session, msg->data, sz);
 	}
 	++ctx->message_count;
 	int reserve_msg;
@@ -420,12 +446,19 @@ cmd_reg(struct skynet_context * context, const char * param) {
 
 static const char *
 cmd_query(struct skynet_context * context, const char * param) {
+	uint32_t handle = 0;
 	if (param[0] == '.') {
-		uint32_t handle = skynet_handle_findname(param+1);
-		if (handle) {
-			sprintf(context->result, ":%x", handle);
-			return context->result;
-		}
+		handle = skynet_handle_findname(param+1);
+	}
+
+	FILE *rf = (FILE *)ATOM_LOAD(&context->recordfile);
+	if (rf) {
+		skynet_record_handle(context, rf, handle);
+	}
+
+	if (handle) {
+		sprintf(context->result, ":%x", handle);
+		return context->result;
 	}
 	return NULL;
 }
@@ -624,6 +657,59 @@ cmd_logoff(struct skynet_context * context, const char * param) {
 }
 
 static const char *
+cmd_recordon(struct skynet_context * context, const char * param) {
+	uint32_t handle = tohandle(context, param);
+	if (handle == 0)
+		return NULL;
+	struct skynet_context * ctx = skynet_handle_grab(handle);
+	if (ctx == NULL)
+		return NULL;
+	FILE *f = NULL;
+	FILE * lastf = (FILE *)ATOM_LOAD(&ctx->recordfile);
+	if (lastf == NULL) {
+		f = skynet_record_open(context, handle);
+		if (f) {
+			if (!ATOM_CAS_POINTER(&ctx->recordfile, 0, (uintptr_t)f)) {
+				// recordfile opens in other thread, close this one.
+				fclose(f);
+			}
+		}
+	}
+	skynet_context_release(ctx);
+	return NULL;
+}
+
+static const char *
+cmd_recordoff(struct skynet_context * context, const char * param) {
+	uint32_t handle = tohandle(context, param);
+	if (handle == 0)
+		return NULL;
+	struct skynet_context * ctx = skynet_handle_grab(handle);
+	if (ctx == NULL)
+		return NULL;
+	FILE * f = (FILE *)ATOM_LOAD(&ctx->recordfile);
+	if (f) {
+		// recordfile may close in other thread
+		if (ATOM_CAS_POINTER(&ctx->recordfile, (uintptr_t)f, (uintptr_t)NULL)) {
+			skynet_record_close(context, f, handle);
+		}
+	}
+	skynet_context_release(ctx);
+	return NULL;
+}
+
+static const char *
+cmd_recordstart(struct skynet_context *context, const char* buffer) {
+	FILE * f = (FILE *)ATOM_LOAD(&context->recordfile);
+	if (f == NULL) {
+		return NULL;
+	}
+
+	skynet_record_start(f, buffer);
+	return NULL;
+}
+
+static const char *
 cmd_signal(struct skynet_context * context, const char * param) {
 	uint32_t handle = tohandle(context, param);
 	if (handle == 0)
@@ -659,6 +745,9 @@ static struct command_func cmd_funcs[] = {
 	{ "STAT", cmd_stat },
 	{ "LOGON", cmd_logon },
 	{ "LOGOFF", cmd_logoff },
+	{ "RECORDON", cmd_recordon },
+	{ "RECORDOFF", cmd_recordoff },
+	{ "RECORDSTART", cmd_recordstart },
 	{ "SIGNAL", cmd_signal },
 	{ NULL, NULL },
 };
@@ -816,6 +905,25 @@ skynet_globalinit(void) {
 	}
 	// set mainthread's key
 	skynet_initthread(THREAD_MAIN);
+
+	//record
+	struct record_intque *q = skynet_record_mq_create();
+	G_SESSION_Q = q;
+
+	struct record_intque *qq = skynet_record_mq_create();
+	G_HANDLE_Q = qq;
+
+	struct record_intque *qqq = skynet_record_mq_create();
+	G_SOCKETID_Q = qqq;
+
+	struct record_intque *qqqq = skynet_record_mq_create();
+	G_MATHSEEK_Q = qqqq;
+
+	struct record_intque *qqqqq = skynet_record_mq_create();
+	G_OSTIME_Q = qqqqq;
+
+	struct record_intque *qqqqqq = skynet_record_mq_create();
+	G_NOWTIME_Q = qqqqqq;
 }
 
 void 
@@ -832,4 +940,68 @@ skynet_initthread(int m) {
 void
 skynet_profile_enable(int enable) {
 	G_NODE.profile = (bool)enable;
+}
+
+//record
+FILE* 
+skynet_context_recordfile(struct skynet_context * context) {
+	return (FILE *)ATOM_LOAD(&context->recordfile);
+}
+
+void 
+skynet_record_push_session(int session) {
+	skynet_record_mq_push(G_SESSION_Q, session);
+}
+int 
+skynet_record_pop_session() {
+	return (int)skynet_record_mq_pop(G_SESSION_Q);
+}
+
+void 
+skynet_record_push_handle(uint32_t handle) {
+	skynet_record_mq_push(G_HANDLE_Q, handle);
+}
+
+uint32_t 
+skynet_record_pop_handle() {
+	return (uint32_t)skynet_record_mq_pop(G_HANDLE_Q);
+}
+
+void 
+skynet_record_push_socketid(int id) {
+	skynet_record_mq_push(G_SOCKETID_Q, id);
+}
+
+int
+skynet_record_pop_socketid() {
+	return (int)skynet_record_mq_pop(G_SOCKETID_Q);
+}
+
+void 
+skynet_record_push_mathseek(int64_t x, int64_t y) {
+	skynet_record_mq_push(G_MATHSEEK_Q, x);
+	skynet_record_mq_push(G_MATHSEEK_Q, y);
+}
+
+int64_t 
+skynet_record_pop_mathseek() {
+	return skynet_record_mq_pop(G_MATHSEEK_Q);
+}
+
+void skynet_record_push_ostime(uint32_t ostime) {
+	skynet_record_mq_push(G_OSTIME_Q, ostime);
+}
+
+uint32_t skynet_record_pop_ostime() {
+	return (uint32_t)skynet_record_mq_pop(G_OSTIME_Q);
+}
+
+void 
+skynet_record_push_nowtime(int64_t now) {
+	skynet_record_mq_push(G_NOWTIME_Q, now);
+}
+
+int64_t 
+skynet_record_pop_nowtime() {
+	return skynet_record_mq_pop(G_NOWTIME_Q);
 }

@@ -19,4 +19,7 @@ const char * skynet_handle_namehandle(uint32_t handle, const char *name);
 
 void skynet_handle_init(int harbor);
 
+//record
+void skynet_handle_set_index(uint32_t handle);
+
 #endif

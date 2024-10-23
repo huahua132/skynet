@@ -9,6 +9,7 @@
 #include "skynet_socket.h"
 #include "skynet_daemon.h"
 #include "skynet_harbor.h"
+#include "skynet_record.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -31,6 +32,7 @@ struct monitor {
 	uint64_t start_time;
 	uint64_t fast_time;
 	uint32_t once_addtime;
+	const char* recordfile;
 };
 
 struct worker_parm {
@@ -232,9 +234,344 @@ thread_worker(void *p) {
 	return NULL;
 }
 
+static void *
+thread_record(void* p) {
+	struct monitor * m = p;
+	skynet_initthread(THREAD_RECORD);
+
+	FILE *f = fopen(m->recordfile, "rb"); // 以二进制读取模式打开文件
+    if (f == NULL) {
+        skynet_error(NULL, "Error opening file: %s", m->recordfile);
+        return NULL;
+    }
+	char version[256]; // 存储版本信息
+    if (fgets(version, sizeof(SKYNET_RECORD_VERSION), f) != NULL) {
+        skynet_error(NULL, "Version:%s", version);
+    }
+
+	if (strcmp(version, SKYNET_RECORD_VERSION) != 0) {
+		skynet_error(NULL, "version not same curversion[%s] recordversion[%s]", version, SKYNET_RECORD_VERSION);
+		return NULL;
+	}
+
+	skynet_error(NULL, "start play record >>>> %s", m->recordfile);
+	size_t len;
+	uint32_t handle = 0;
+    // 读取消息体
+	while (fread(&len, sizeof(len), 1, f) == 1)
+	{
+		fseek(f, -sizeof(len), SEEK_CUR);
+		int is_msg = 0;
+		int is_start = 0;
+		void *start_args = NULL;
+		pthread_mutex_lock(&m->mutex);
+		while (fread(&len, sizeof(len), 1, f) == 1) {
+			// 读取标记
+			char type;
+			if (fread(&type, sizeof(type), 1, f) != 1) {
+				skynet_error(NULL, "Error reading file");
+				break;
+			}
+
+			if (is_msg == 1 || is_start == 1) {
+				if (type != 's' && type != 'h' && type != 'k' && type != 'r' && type != 't' && type != 'n') {
+					fseek(f, -(sizeof(len) + sizeof(type)), SEEK_CUR);
+					break;
+				}
+			}
+
+			switch (type) {
+				case 'o': {
+					uint32_t starttime;
+					uint64_t currenttime;
+
+					if (fread(&starttime, sizeof(starttime), 1, f) != 1) {
+						skynet_error(NULL, "Error reading starttime");
+						break;
+					}
+					if (fread(&currenttime, sizeof(currenttime), 1, f) != 1) {
+						skynet_error(NULL, "Error reading currenttime");
+						break;
+					}
+					
+					skynet_timer_setstarttime(starttime);
+					skynet_timer_setcurrent(currenttime);
+					skynet_error(NULL, "Start Time: %u, Current Time: %lu",starttime, currenttime);
+					break;
+				}
+				case 'm': {
+					uint32_t source;
+					int session;
+					int msg_type;
+					uint64_t ti;
+					size_t sz = len - 20;
+					void *buffer = skynet_malloc(sz); // 24 字节用于其他数据
+
+					if (buffer == NULL) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Memory allocation failed", sz);
+						break;
+					}
+
+					if (fread(&source, sizeof(source), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source currenttime");
+						break;
+					}
+
+					if (fread(&msg_type, sizeof(msg_type), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source msg_type");
+						break;
+					}
+
+					if (fread(&session, sizeof(session), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source session");
+						break;
+					}
+
+					if (fread(&ti, sizeof(ti), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source ti");
+						break;
+					}
+					
+					if (sz > 0 && fread(buffer, sz, 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source buffer %d", sz);
+						break;
+					}
+
+					if (handle <= 0) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error not ctx");
+						break;
+					}
+					// 处理读取的数据
+					//printf("Message: Source: %u, Type: %d, Session: %d, Time: %lu sz[%lu]\n", source, msg_type, session, ti, sz);
+					// TODO: 处理 buffer 中的数据
+					struct skynet_message message;
+					message.source = source;
+					message.session = session;
+					message.data = buffer;					
+					message.sz = sz | ((size_t)msg_type << MESSAGE_TYPE_SHIFT);
+
+					skynet_timer_setcurrent(ti);
+					skynet_context_push(handle, &message);
+
+					is_msg = 1;
+					break;
+				}
+				case 'a': {
+					int type;
+					int id;
+					int ud;
+					uint64_t ti;
+					size_t sz = len - 20;
+					void *buffer = skynet_malloc(sz); // 24 字节用于其他数据
+
+					if (buffer == NULL) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Memory allocation failed ",sz);
+						break;
+					}
+
+					if (fread(&type, sizeof(type), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source type");
+						break;
+					}
+
+					if (fread(&id, sizeof(id), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source id");
+						break;
+					}
+
+					if (fread(&ud, sizeof(ud), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source ud");
+						break;
+					}
+
+					if (fread(&ti, sizeof(ti), 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source ti");
+						break;
+					}
+					
+					if (sz > 0 && fread(buffer, sz, 1, f) != 1) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error source buffer %d", sz);
+						break;
+					}
+
+					if (handle <= 0) {
+						skynet_free(buffer);
+						skynet_error(NULL, "Error not ctx");
+						break;
+					}
+
+					struct skynet_socket_message *sm;
+					size_t smsz = sizeof(*sm);
+					//printf("socket: type[%d] id[%d] ud[%d] sz[%lu] \n", type, id, ud, sz);
+					if (type == SKYNET_SOCKET_TYPE_DATA || type == SKYNET_SOCKET_TYPE_CLOSE || type == SKYNET_SOCKET_TYPE_UDP || type == SKYNET_SOCKET_TYPE_WARNING) {
+						
+					} else {
+						size_t msg_sz = strlen(buffer);
+						if (msg_sz > 128) {
+							msg_sz = 128;
+						}
+						smsz += msg_sz;	
+					}
+
+					sm = (struct skynet_socket_message *)skynet_malloc(smsz);
+					sm->type = type;
+					sm->id = id;
+					sm->ud = ud;
+					if (type == SKYNET_SOCKET_TYPE_DATA || type == SKYNET_SOCKET_TYPE_CLOSE || type == SKYNET_SOCKET_TYPE_UDP || type == SKYNET_SOCKET_TYPE_WARNING) {
+						sm->buffer = buffer;
+					} else {
+						sm->buffer = NULL;
+						//printf("socket2: type[%d] id[%d] ud[%d] sz[%lu] smsz[%lu] [%lu] \n", type, id, ud, sz, smsz, smsz - sizeof(*sm));
+						memcpy(sm+1, buffer, smsz - sizeof(*sm));
+						//printf("socket3: type[%d] id[%d] ud[%d] sz[%lu] smsz[%lu] \n", type, id, ud, sz, smsz);
+						skynet_free(buffer);
+					}
+					
+					struct skynet_message message;
+					message.source = 0;
+					message.session = 0;
+					message.data = sm;
+					message.sz = smsz | ((size_t)PTYPE_SOCKET << MESSAGE_TYPE_SHIFT);
+
+					skynet_timer_setcurrent(ti);
+					skynet_context_push(handle, &message);
+
+					is_msg = 1;
+					break;
+				}
+				case 'c': {
+					uint64_t currenttime;
+					if (fread(&currenttime, sizeof(currenttime), 1, f) != 1) {
+						skynet_error(NULL, "Error source c");
+						break;
+					}
+					//skynet_error(NULL, "Close Time: %lu", currenttime);
+					break;
+				}
+				case 'b': {
+					char hbuf[9];
+					if (fread(hbuf, 8, 1, f) != 1) {
+						skynet_error(NULL, "Error handle b");
+						break;
+					}
+					hbuf[8] = '\0';
+					handle = (uint32_t)strtoul(hbuf, NULL, 16);
+					
+					start_args = skynet_malloc(len - 8);
+					if (fread(start_args, len - 8, 1, f) != 1) {
+						skynet_error(NULL, "Error source b");
+						break;
+					}
+					
+					is_start = 1;
+					break;
+				}
+				case 's': {
+					int session;
+					if (fread(&session, sizeof(session), 1, f) != 1) {
+						skynet_error(NULL, "Error session c");
+						break;
+					}
+					//skynet_error(NULL, "session: %d", session);
+					skynet_record_push_session(session);
+					break;
+				}
+				case 'h': {
+					uint32_t handle;
+					if (fread(&handle, sizeof(handle), 1, f) != 1) {
+						skynet_error(NULL, "Error handle l");
+						break;
+					}
+					//skynet_error(NULL, "handle: %d", handle);
+					skynet_record_push_handle(handle);
+					break;
+				}
+				case 'k': {
+					int socketid;
+					if (fread(&socketid, sizeof(socketid), 1, f) != 1) {
+						skynet_error(NULL, "Error socketid k");
+						break;
+					}
+					//skynet_error(NULL, "socketid: %d", socketid);
+					skynet_record_push_socketid(socketid);
+					break;
+				}
+				case 'r': {
+					int64_t x;
+					int64_t y;
+					if (fread(&x, sizeof(x), 1, f) != 1) {
+						skynet_error(NULL, "Error x r");
+						break;
+					}
+					if (fread(&y, sizeof(y), 1, f) != 1) {
+						skynet_error(NULL, "Error y r");
+						break;
+					}
+					//skynet_error(NULL, "mathseek: %llu %llu", x, y);
+
+					skynet_record_push_mathseek(x, y);
+					break;
+				}
+				case 't': {
+					uint32_t ostime;
+					if (fread(&ostime, sizeof(ostime), 1, f) != 1) {
+						skynet_error(NULL, "Error ostime t");
+						break;
+					}
+					
+					skynet_record_push_ostime(ostime);
+					break;
+				}
+				case 'n': {
+					int64_t now;
+					if (fread(&now, sizeof(now), 1, f) != 1) {
+						skynet_error(NULL, "Error now n");
+						break;
+					}
+					skynet_record_push_nowtime(now);
+					break;
+				}
+				default:
+					skynet_error(NULL, "Unknown record type: %c", type);
+					break;
+			}
+		}
+
+		if (is_start == 1) {
+			skynet_handle_set_index(handle);
+			struct skynet_context *ctx = skynet_context_new("snlua", start_args);
+			if (ctx == NULL) {
+				skynet_error(NULL, "Can't launch service");
+				break;
+			}
+			free(start_args);
+		}
+
+		pthread_cond_broadcast(&m->cond);
+		pthread_cond_wait(&m->workcond, &m->mutex);
+		pthread_mutex_unlock(&m->mutex);
+	}
+	skynet_error(NULL, "play record over >>>> %s", m->recordfile);
+    fclose(f); // 关闭文件
+	return NULL;
+}
+
 static void
-start(int thread) {
-	pthread_t pid[thread+4];
+start(int thread, int is_playrecord, const char* recordfile) {
+	pthread_t pid[thread+5];
 
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	M = m;
@@ -245,6 +582,7 @@ start(int thread) {
 	m->once_addtime = 0;
 	m->start_time = skynet_starttime();
 	m->start_time *= 100;
+	m->recordfile = recordfile;
 
 	m->m = skynet_malloc(thread * sizeof(struct skynet_monitor *));
 	int i;
@@ -294,7 +632,13 @@ start(int thread) {
 		create_thread(&pid[i+4], thread_worker, &wp[i]);
 	}
 
-	for (i=0;i<thread+4;i++) {
+	int len = 4;
+	if (is_playrecord == 1) {
+		create_thread(&pid[i+5], thread_record, m);
+		len = 5;
+	}
+
+	for (i=0;i<thread+len;i++) {
 		pthread_join(pid[i], NULL); 
 	}
 
@@ -355,9 +699,13 @@ skynet_start(struct skynet_config * config) {
 
 	skynet_handle_namehandle(skynet_context_handle(ctx), "logger");
 
-	bootstrap(ctx, config->bootstrap);
+	if (strcmp(config->recordfile, "") == 0) {
+		bootstrap(ctx, config->bootstrap);
 
-	start(config->thread);
+		start(config->thread, 0, config->recordfile);
+	} else {
+		start(config->thread, 1, config->recordfile);
+	}
 
 	// harbor_exit may call socket send, so it should exit before socket_free
 	skynet_harbor_exit();

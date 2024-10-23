@@ -10,6 +10,7 @@ struct skynet_config {
 	const char * bootstrap;
 	const char * logger;
 	const char * logservice;
+	const char * recordfile;
 };
 
 #define THREAD_WORKER 0
@@ -18,6 +19,7 @@ struct skynet_config {
 #define THREAD_TIMER 3
 #define THREAD_MONITOR 4
 #define THREAD_FAST_TIMER 5
+#define THREAD_RECORD 6
 
 void skynet_start(struct skynet_config * config);
 
