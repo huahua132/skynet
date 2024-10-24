@@ -98,6 +98,7 @@ skynet_record_close(struct skynet_context* ctx, FILE *f, uint32_t handle) {
     uint64_t currenttime = skynet_now();
     fprintf(f, "c");
     fwrite(&currenttime, sizeof(currenttime), 1, f);
+    fflush(f);
 	fclose(f);
 }
 
