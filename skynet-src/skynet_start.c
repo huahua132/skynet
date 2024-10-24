@@ -255,216 +255,60 @@ thread_record(void* p) {
 	}
 
 	skynet_error(NULL, "start play record >>>> %s", m->recordfile);
-	size_t len;
+	char type;
 	uint32_t handle = 0;
     // 读取消息体
-	while (fread(&len, sizeof(len), 1, f) == 1)
+	while (fread(&type, sizeof(type), 1, f) == 1)
 	{
-		fseek(f, -sizeof(len), SEEK_CUR);
+		fseek(f, -sizeof(type), SEEK_CUR);
 		int is_msg = 0;
 		int is_start = 0;
 		void *start_args = NULL;
 		pthread_mutex_lock(&m->mutex);
-		while (fread(&len, sizeof(len), 1, f) == 1) {
-			// 读取标记
-			char type;
-			if (fread(&type, sizeof(type), 1, f) != 1) {
-				skynet_error(NULL, "Error reading file");
-				break;
-			}
-
+		while (fread(&type, sizeof(type), 1, f) == 1) {
 			if (is_msg == 1 || is_start == 1) {
 				if (type != 's' && type != 'h' && type != 'k' && type != 'r' && type != 't' && type != 'n') {
-					fseek(f, -(sizeof(len) + sizeof(type)), SEEK_CUR);
+					fseek(f, -(sizeof(type)), SEEK_CUR);
 					break;
 				}
 			}
 
 			switch (type) {
 				case 'o': {
-					uint32_t starttime;
-					uint64_t currenttime;
-
-					if (fread(&starttime, sizeof(starttime), 1, f) != 1) {
-						skynet_error(NULL, "Error reading starttime");
-						break;
-					}
-					if (fread(&currenttime, sizeof(currenttime), 1, f) != 1) {
-						skynet_error(NULL, "Error reading currenttime");
-						break;
-					}
-					
-					skynet_timer_setstarttime(starttime);
-					skynet_timer_setcurrent(currenttime);
-					skynet_error(NULL, "Start Time: %u, Current Time: %lu",starttime, currenttime);
+					skynet_record_parse_open(f);
 					break;
 				}
 				case 'm': {
-					uint32_t source;
-					int session;
-					int msg_type;
-					uint64_t ti;
-					size_t sz = len - 20;
-					void *buffer = skynet_malloc(sz); // 24 字节用于其他数据
-
-					if (buffer == NULL) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Memory allocation failed", sz);
-						break;
-					}
-
-					if (fread(&source, sizeof(source), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source currenttime");
-						break;
-					}
-
-					if (fread(&msg_type, sizeof(msg_type), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source msg_type");
-						break;
-					}
-
-					if (fread(&session, sizeof(session), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source session");
-						break;
-					}
-
-					if (fread(&ti, sizeof(ti), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source ti");
-						break;
-					}
-					
-					if (sz > 0 && fread(buffer, sz, 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source buffer %d", sz);
-						break;
-					}
-
 					if (handle <= 0) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error not ctx");
+						skynet_error(NULL, "record error not ctx");
 						break;
 					}
-					// 处理读取的数据
-					//printf("Message: Source: %u, Type: %d, Session: %d, Time: %lu sz[%lu]\n", source, msg_type, session, ti, sz);
-					// TODO: 处理 buffer 中的数据
-					struct skynet_message message;
-					message.source = source;
-					message.session = session;
-					message.data = buffer;					
-					message.sz = sz | ((size_t)msg_type << MESSAGE_TYPE_SHIFT);
-
-					skynet_timer_setcurrent(ti);
-					skynet_context_push(handle, &message);
-
+					skynet_record_parse_output(f, handle);
 					is_msg = 1;
 					break;
 				}
 				case 'a': {
-					int type;
-					int id;
-					int ud;
-					uint64_t ti;
-					size_t sz = len - 20;
-					void *buffer = skynet_malloc(sz); // 24 字节用于其他数据
-
-					if (buffer == NULL) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Memory allocation failed ",sz);
-						break;
-					}
-
-					if (fread(&type, sizeof(type), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source type");
-						break;
-					}
-
-					if (fread(&id, sizeof(id), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source id");
-						break;
-					}
-
-					if (fread(&ud, sizeof(ud), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source ud");
-						break;
-					}
-
-					if (fread(&ti, sizeof(ti), 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source ti");
-						break;
-					}
-					
-					if (sz > 0 && fread(buffer, sz, 1, f) != 1) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error source buffer %d", sz);
-						break;
-					}
-
 					if (handle <= 0) {
-						skynet_free(buffer);
-						skynet_error(NULL, "Error not ctx");
+						skynet_error(NULL, "record error not ctx");
 						break;
 					}
-
-					struct skynet_socket_message *sm;
-					size_t smsz = sizeof(*sm);
-					//printf("socket: type[%d] id[%d] ud[%d] sz[%lu] \n", type, id, ud, sz);
-					if (type == SKYNET_SOCKET_TYPE_DATA || type == SKYNET_SOCKET_TYPE_CLOSE || type == SKYNET_SOCKET_TYPE_UDP || type == SKYNET_SOCKET_TYPE_WARNING) {
-						
-					} else {
-						size_t msg_sz = strlen(buffer);
-						if (msg_sz > 128) {
-							msg_sz = 128;
-						}
-						smsz += msg_sz;	
-					}
-
-					sm = (struct skynet_socket_message *)skynet_malloc(smsz);
-					sm->type = type;
-					sm->id = id;
-					sm->ud = ud;
-					if (type == SKYNET_SOCKET_TYPE_DATA || type == SKYNET_SOCKET_TYPE_CLOSE || type == SKYNET_SOCKET_TYPE_UDP || type == SKYNET_SOCKET_TYPE_WARNING) {
-						sm->buffer = buffer;
-					} else {
-						sm->buffer = NULL;
-						//printf("socket2: type[%d] id[%d] ud[%d] sz[%lu] smsz[%lu] [%lu] \n", type, id, ud, sz, smsz, smsz - sizeof(*sm));
-						memcpy(sm+1, buffer, smsz - sizeof(*sm));
-						//printf("socket3: type[%d] id[%d] ud[%d] sz[%lu] smsz[%lu] \n", type, id, ud, sz, smsz);
-						skynet_free(buffer);
-					}
-					
-					struct skynet_message message;
-					message.source = 0;
-					message.session = 0;
-					message.data = sm;
-					message.sz = smsz | ((size_t)PTYPE_SOCKET << MESSAGE_TYPE_SHIFT);
-
-					skynet_timer_setcurrent(ti);
-					skynet_context_push(handle, &message);
-
+					skynet_record_parse_socket(f, handle);
 					is_msg = 1;
 					break;
 				}
 				case 'c': {
-					uint64_t currenttime;
-					if (fread(&currenttime, sizeof(currenttime), 1, f) != 1) {
-						skynet_error(NULL, "Error source c");
-						break;
-					}
-					//skynet_error(NULL, "Close Time: %lu", currenttime);
+					skynet_record_parse_close(f);
 					break;
 				}
 				case 'b': {
+					size_t len;
+					if (fread(&len, sizeof(len), 1, f) != 1) {
+						skynet_error(NULL, "Error fread b len");
+						break;
+					}
 					char hbuf[9];
 					if (fread(hbuf, 8, 1, f) != 1) {
-						skynet_error(NULL, "Error handle b");
+						skynet_error(NULL, "Error fread b handle");
 						break;
 					}
 					hbuf[8] = '\0';
@@ -480,68 +324,27 @@ thread_record(void* p) {
 					break;
 				}
 				case 's': {
-					int session;
-					if (fread(&session, sizeof(session), 1, f) != 1) {
-						skynet_error(NULL, "Error session c");
-						break;
-					}
-					//skynet_error(NULL, "session: %d", session);
-					skynet_record_push_session(session);
+					skynet_record_parse_newsession(f);
 					break;
 				}
 				case 'h': {
-					uint32_t handle;
-					if (fread(&handle, sizeof(handle), 1, f) != 1) {
-						skynet_error(NULL, "Error handle l");
-						break;
-					}
-					//skynet_error(NULL, "handle: %d", handle);
-					skynet_record_push_handle(handle);
+					skynet_record_parse_handle(f);
 					break;
 				}
 				case 'k': {
-					int socketid;
-					if (fread(&socketid, sizeof(socketid), 1, f) != 1) {
-						skynet_error(NULL, "Error socketid k");
-						break;
-					}
-					//skynet_error(NULL, "socketid: %d", socketid);
-					skynet_record_push_socketid(socketid);
+					skynet_record_parse_socketid(f);
 					break;
 				}
 				case 'r': {
-					int64_t x;
-					int64_t y;
-					if (fread(&x, sizeof(x), 1, f) != 1) {
-						skynet_error(NULL, "Error x r");
-						break;
-					}
-					if (fread(&y, sizeof(y), 1, f) != 1) {
-						skynet_error(NULL, "Error y r");
-						break;
-					}
-					//skynet_error(NULL, "mathseek: %llu %llu", x, y);
-
-					skynet_record_push_mathseek(x, y);
+					skynet_record_parse_randseed(f);
 					break;
 				}
 				case 't': {
-					uint32_t ostime;
-					if (fread(&ostime, sizeof(ostime), 1, f) != 1) {
-						skynet_error(NULL, "Error ostime t");
-						break;
-					}
-					
-					skynet_record_push_ostime(ostime);
+					skynet_record_parse_ostime(f);
 					break;
 				}
 				case 'n': {
-					int64_t now;
-					if (fread(&now, sizeof(now), 1, f) != 1) {
-						skynet_error(NULL, "Error now n");
-						break;
-					}
-					skynet_record_push_nowtime(now);
+					skynet_record_parse_now(f);
 					break;
 				}
 				default:
@@ -557,7 +360,7 @@ thread_record(void* p) {
 				skynet_error(NULL, "Can't launch service");
 				break;
 			}
-			free(start_args);
+			skynet_free(start_args);
 		}
 
 		pthread_cond_broadcast(&m->cond);

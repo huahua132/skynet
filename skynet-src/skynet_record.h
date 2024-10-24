@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define SKYNET_RECORD_VERSION "1.0.0"
+#define SKYNET_RECORD_VERSION "1.0.1"
 
 struct record_intque {
 	int cap;
@@ -16,16 +16,28 @@ struct record_intque {
 	int64_t *queue;
 };
 
-FILE * skynet_record_open(struct skynet_context * ctx, uint32_t handle);
-void skynet_record_close(struct skynet_context * ctx, FILE *f, uint32_t handle);
-void skynet_record_output(struct skynet_context *ctx, FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz);
+FILE * skynet_record_open(uint32_t handle);
+void skynet_record_close(FILE *f, uint32_t handle);
+void skynet_record_output(FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz);
 void skynet_record_start(FILE *f, const char* buffer);
-void skynet_record_newsession(struct skynet_context *ctx, FILE *f, int session);
-void skynet_record_handle(struct skynet_context *ctx, FILE *f, uint32_t handle);
-void skynet_record_socketid(struct skynet_context *ctx, FILE *f, int id);
-void skynet_record_randseed(struct skynet_context *ctx, FILE *f, int64_t x, int64_t y);
-void skynet_record_ostime(struct skynet_context *ctx, FILE *f, uint32_t ostime);
-void skynet_record_nowtime(struct skynet_context *ctx, FILE *f, int64_t now);
+void skynet_record_newsession(FILE *f, int session);
+void skynet_record_handle(FILE *f, uint32_t handle);
+void skynet_record_socketid(FILE *f, int id);
+void skynet_record_randseed(FILE *f, int64_t x, int64_t y);
+void skynet_record_ostime(FILE *f, uint32_t ostime);
+void skynet_record_nowtime(FILE *f, int64_t now);
+
+//parse_do
+void skynet_record_parse_open(FILE *f);
+void skynet_record_parse_close(FILE *f);
+void skynet_record_parse_socket(FILE *f, uint32_t handle);
+void skynet_record_parse_output(FILE *f, uint32_t handle);
+void skynet_record_parse_newsession(FILE *f);
+void skynet_record_parse_handle(FILE *f);
+void skynet_record_parse_socketid(FILE *f);
+void skynet_record_parse_randseed(FILE *f);
+void skynet_record_parse_ostime(FILE *f);
+void skynet_record_parse_now(FILE *f);
 
 //队列
 struct record_intque * skynet_record_mq_create();

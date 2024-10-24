@@ -2,6 +2,8 @@
 #include "skynet_timer.h"
 #include "skynet.h"
 #include "skynet_socket.h"
+#include "skynet_server.h"
+#include "skynet_mq.h"
 
 #include <string.h>
 #include <time.h>
@@ -10,7 +12,16 @@
 #include <sys/stat.h>   // 包含 mkdir 函数的声明
 #include <sys/types.h>  // 包含类型定义
 
-int create_dir(struct skynet_context * ctx, const char *path) {
+static inline uint64_t unpackNumberValue(FILE* f, size_t len) {
+    uint64_t value;
+    if (fread(&value, len, 1, f) != 1) {
+        skynet_error(NULL, "read recordfile err");
+        return 0;
+    }
+    return value;
+}
+
+static int create_dir(const char *path) {
     char buffer[256];
     char *pos = NULL;
     size_t len;
@@ -24,7 +35,7 @@ int create_dir(struct skynet_context * ctx, const char *path) {
         if (*pos == '/') {
             *pos = '\0'; // 将分隔符临时替换为空字符
             if (mkdir(buffer, 0777) == -1 && errno != EEXIST) {
-                skynet_error(ctx, "Failed to create directory %s: %s\n", buffer, strerror(errno));
+                skynet_error(NULL, "Failed to create directory %s: %s\n", buffer, strerror(errno));
                 return -1; // 返回错误
             }
             *pos = '/'; // 还原分隔符
@@ -33,7 +44,7 @@ int create_dir(struct skynet_context * ctx, const char *path) {
     
     // 创建最后一级目录
     if (mkdir(buffer, 0777) == -1 && errno != EEXIST) {
-        skynet_error(ctx, "Failed to create directory %s: %s\n", buffer, strerror(errno));
+        skynet_error(NULL, "Failed to create directory %s: %s\n", buffer, strerror(errno));
         return -1; // 返回错误
     }
 
@@ -41,13 +52,13 @@ int create_dir(struct skynet_context * ctx, const char *path) {
 }
 
 FILE * 
-skynet_record_open(struct skynet_context * ctx, uint32_t handle) {
+skynet_record_open(uint32_t handle) {
 	const char * recordpath = skynet_getenv("recordpath");
 	if (recordpath == NULL)
 		return NULL;
 
-    if (create_dir(ctx, recordpath) != 0) {
-        skynet_error(ctx, "Failed to create directory structure for %s", recordpath);
+    if (create_dir(recordpath) != 0) {
+        skynet_error(NULL, "Failed to create directory structure for %s", recordpath);
         return NULL;
     }
 
@@ -58,34 +69,45 @@ skynet_record_open(struct skynet_context * ctx, uint32_t handle) {
 	if (f) {
 		uint32_t starttime = skynet_starttime();
 		uint64_t currenttime = skynet_now();
-		skynet_error(ctx, "Open record file %s", tmp);
+		skynet_error(NULL, "Open record file %s", tmp);
         fprintf(f, "%s", SKYNET_RECORD_VERSION);
-        size_t len = 4 + 8;
-        fwrite(&len, sizeof(len), 1, f);
         fprintf(f, "o");
         fwrite(&starttime, sizeof(starttime), 1, f);
         fwrite(&currenttime, sizeof(currenttime), 1, f);
 		fflush(f);
 	} else {
-		skynet_error(ctx, "Open record file %s fail %s", tmp, strerror(errno));
+		skynet_error(NULL, "Open record file %s fail %s", tmp, strerror(errno));
 	}
     
 	return f;
 }
 
+void 
+skynet_record_parse_open(FILE *f) {
+    uint32_t starttime = (uint32_t)unpackNumberValue(f, 4);
+    uint64_t currenttime = unpackNumberValue(f, 8);
+    skynet_timer_setstarttime(starttime);
+	skynet_timer_setcurrent(currenttime);
+    skynet_error(NULL ,"skynet_record_parse_open starttime[%d] currenttime[%llu]\n", starttime, currenttime);
+}
+
 void
-skynet_record_close(struct skynet_context * ctx, FILE *f, uint32_t handle) {
-	skynet_error(ctx, "Close record file :%08x", handle);
+skynet_record_close(FILE *f, uint32_t handle) {
+	skynet_error(NULL, "Close record file :%08x", handle);
     uint64_t currenttime = skynet_now();
-    size_t len = 8;
-    fwrite(&len, sizeof(len), 1, f);
     fprintf(f, "c");
     fwrite(&currenttime, sizeof(currenttime), 1, f);
 	fclose(f);
 }
 
+void 
+skynet_record_parse_close(FILE *f) {
+    uint64_t currenttime = unpackNumberValue(f, 8);
+    skynet_error(NULL, "Close Time: %lu", currenttime);
+}
+
 static void
-record_socket(struct skynet_context *ctx, FILE * f, struct skynet_socket_message * message, size_t sz) {
+record_socket(FILE * f, struct skynet_socket_message * message, size_t sz) {
     uint64_t ti = skynet_now();
     const char *buffer = NULL;
     if (message->buffer == NULL) {
@@ -100,88 +122,156 @@ record_socket(struct skynet_context *ctx, FILE * f, struct skynet_socket_message
         buffer = message->buffer;
     }
 
-    size_t len = 20 + sz;
-     if (sz > SIZE_MAX - 20) {
-        skynet_error(ctx, "record msg so large");
-        return;
-    }
-    fwrite(&len, sizeof(len), 1, f);
     fprintf(f, "a");
-    fwrite(&message->type, sizeof(message->type), 1, f); 
+    fwrite(&message->type, sizeof(message->type), 1, f);
     fwrite(&message->id, sizeof(message->id), 1, f);
     fwrite(&message->ud, sizeof(message->ud), 1, f);
-    fwrite(&ti, sizeof(ti), 1, f);           // 写入 ti
+    fwrite(&ti, sizeof(ti), 1, f);
+    fwrite(&sz, sizeof(sz), 1, f);
     fwrite(buffer, sz, 1, f);
     fflush(f);
-    //skynet_error(NULL, "socket msg >>> len[%u] sz[%u], id[%d], ud[%d] type[%d]", len, sz, message->id, message->ud, message->type);
 }
 
 void 
-skynet_record_output(struct skynet_context *ctx, FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz) {
+skynet_record_parse_socket(FILE *f, uint32_t handle) {
+    int type = (int)unpackNumberValue(f, 4);
+    int id = (int)unpackNumberValue(f, 4);
+    int ud = (int)unpackNumberValue(f, 4);
+    uint64_t ti = unpackNumberValue(f, 8);
+    size_t bufsz = (size_t)unpackNumberValue(f, 8);
+    printf("skynet_record_parse_socket >>> type[%d] id[%d] ud[%d] ti[%lu] bufsz[%lu]\n", type, id, ud, ti, bufsz);
+    char *buffer = skynet_malloc(bufsz);
+    if (bufsz > 0 && fread(buffer, bufsz, 1, f) != 1) {
+        skynet_free(buffer);
+        skynet_error(NULL, "Error record socket buffer %d", bufsz);
+        return;
+    }
+
+    struct skynet_socket_message *sm;
+    size_t smsz = sizeof(*sm);
+    if (type == SKYNET_SOCKET_TYPE_DATA || type == SKYNET_SOCKET_TYPE_CLOSE || type == SKYNET_SOCKET_TYPE_UDP || type == SKYNET_SOCKET_TYPE_WARNING) {
+        
+    } else {
+        size_t msg_sz = strlen(buffer);
+        if (msg_sz > 128) {
+            msg_sz = 128;
+        }
+        smsz += msg_sz;	
+    }
+
+    sm = (struct skynet_socket_message *)skynet_malloc(smsz);
+    sm->type = type;
+    sm->id = id;
+    sm->ud = ud;
+    if (type == SKYNET_SOCKET_TYPE_DATA || type == SKYNET_SOCKET_TYPE_CLOSE || type == SKYNET_SOCKET_TYPE_UDP || type == SKYNET_SOCKET_TYPE_WARNING) {
+        sm->buffer = buffer;
+    } else {
+        sm->buffer = NULL;
+        memcpy(sm+1, buffer, smsz - sizeof(*sm));
+        skynet_free(buffer);
+    }
+    
+    struct skynet_message message;
+    message.source = 0;
+    message.session = 0;
+    message.data = sm;
+    message.sz = smsz | ((size_t)PTYPE_SOCKET << MESSAGE_TYPE_SHIFT);
+
+    skynet_timer_setcurrent(ti);
+    skynet_context_push(handle, &message);
+}
+
+void 
+skynet_record_output(FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz) {
     if (type == PTYPE_SOCKET) {
-        record_socket(ctx, f, buffer, sz);
+        record_socket(f, buffer, sz);
         return;
     }
     uint64_t ti = skynet_now();
-    size_t len = 20 + sz;
-    if (sz > SIZE_MAX - 20) {
-        skynet_error(ctx, "record msg so large");
-        return;
-    }
-    fwrite(&len, sizeof(len), 1, f);
     fprintf(f,"m");
-    fwrite(&source, sizeof(source), 1, f);   // 写入 source
-    fwrite(&type, sizeof(type), 1, f);       // 写入 type
-    fwrite(&session, sizeof(session), 1, f); // 写入 session
-    fwrite(&ti, sizeof(ti), 1, f);           // 写入 ti
+    fwrite(&source, sizeof(source), 1, f);
+    fwrite(&type, sizeof(type), 1, f);
+    fwrite(&session, sizeof(session), 1, f);
+    fwrite(&ti, sizeof(ti), 1, f);
+    fwrite(&sz, sizeof(sz), 1, f);
     fwrite(buffer, sz, 1, f);
     fflush(f);
-    //skynet_error(ctx, "msg >>> len[%u] sz[%u], source[%u], type[%d] session[%d]", len, sz, source, type, session);
+}
+
+void
+skynet_record_parse_output(FILE *f, uint32_t handle) {
+    int source = (int)unpackNumberValue(f, 4);
+    int type = (int)unpackNumberValue(f, 4);
+    int session = (int)unpackNumberValue(f, 4);
+    uint64_t ti = unpackNumberValue(f, 8);
+    size_t bufsz = (size_t)unpackNumberValue(f, 8);
+    char *buffer = skynet_malloc(bufsz);
+    if (bufsz > 0 && fread(buffer, bufsz, 1, f) != 1) {
+        skynet_free(buffer);
+        skynet_error(NULL, "Error record socket buffer %d", bufsz);
+        return;
+    }
+
+    struct skynet_message message;
+    message.source = source;
+    message.session = session;
+    message.data = buffer;					
+    message.sz = bufsz | ((size_t)type << MESSAGE_TYPE_SHIFT);
+
+    skynet_timer_setcurrent(ti);
+    skynet_context_push(handle, &message);
 }
 
 void
 skynet_record_start(FILE *f, const char* buffer) {
     size_t len = strlen(buffer);
-    fwrite(&len, sizeof(len), 1, f);
     fprintf(f,"b");
+    fwrite(&len, sizeof(len), 1, f);
     fwrite(buffer, len, 1, f);
     fflush(f);
-    //skynet_error(NULL, "skynet_record_start >>> len[%d]", len);
 }
 
 void 
-skynet_record_newsession(struct skynet_context *ctx, FILE *f, int session) {
-    size_t len = 4;
-    fwrite(&len, sizeof(len), 1, f);
+skynet_record_newsession(FILE *f, int session) {
     fprintf(f,"s");
-    fwrite(&session, sizeof(session), 1, f); // 写入 session
+    fwrite(&session, sizeof(session), 1, f);
     fflush(f);
-    //skynet_error(ctx, "new_session >>> session[%d]", session);
 }
 
 void 
-skynet_record_handle(struct skynet_context *ctx, FILE *f, uint32_t handle) {
-    size_t len = 4;
-    fwrite(&len, sizeof(len), 1, f);
+skynet_record_parse_newsession(FILE *f) {
+    int session = (int)unpackNumberValue(f, 4);
+    skynet_record_push_session(session);
+}
+
+void 
+skynet_record_handle(FILE *f, uint32_t handle) {
     fprintf(f,"h");
-    fwrite(&handle, sizeof(handle), 1, f); // 写入 handle
+    fwrite(&handle, sizeof(handle), 1, f);
     fflush(f);
-    //skynet_error(ctx, "handle >>> handle[%d]", handle);
 }
 
 void 
-skynet_record_socketid(struct skynet_context *ctx, FILE *f, int id) {
-    size_t len = 4;
-    fwrite(&len, sizeof(len), 1, f);
+skynet_record_parse_handle(FILE *f) {
+    uint32_t handle = (uint32_t)unpackNumberValue(f, 4);
+    skynet_record_push_handle(handle);
+}
+
+void 
+skynet_record_socketid(FILE *f, int id) {
     fprintf(f,"k");
-    fwrite(&id, sizeof(id), 1, f); // 写入 id
+    fwrite(&id, sizeof(id), 1, f);
     fflush(f);
 }
 
 void 
-skynet_record_randseed(struct skynet_context *ctx, FILE *f, int64_t x, int64_t y) {
-    size_t len = 16;
-    fwrite(&len, sizeof(len), 1, f);
+skynet_record_parse_socketid(FILE *f) {
+    int id = (int)unpackNumberValue(f, 4);
+    skynet_record_push_socketid(id);
+}
+
+void 
+skynet_record_randseed(FILE *f, int64_t x, int64_t y) {
     fprintf(f,"r");
     fwrite(&x, sizeof(x), 1, f);
     fwrite(&y, sizeof(y), 1, f);
@@ -189,21 +279,36 @@ skynet_record_randseed(struct skynet_context *ctx, FILE *f, int64_t x, int64_t y
 }
 
 void 
-skynet_record_ostime(struct skynet_context *ctx, FILE *f, uint32_t ostime) {
-    size_t len = 4;
-    fwrite(&len, sizeof(len), 1, f);
+skynet_record_parse_randseed(FILE *f) {
+    int64_t x = unpackNumberValue(f, 8);
+    int64_t y = unpackNumberValue(f, 8);
+    skynet_record_push_mathseek(x, y);
+}
+
+void 
+skynet_record_ostime(FILE *f, uint32_t ostime) {
     fprintf(f,"t");
     fwrite(&ostime, sizeof(ostime), 1, f);
     fflush(f);
 }
 
 void 
-skynet_record_nowtime(struct skynet_context *ctx, FILE *f, int64_t now) {
-    size_t len = 8;
-    fwrite(&len, sizeof(len), 1, f);
+skynet_record_parse_ostime(FILE *f) {
+    uint32_t ostime = (uint32_t)unpackNumberValue(f, 4);
+    skynet_record_push_ostime(ostime);
+}
+
+void 
+skynet_record_nowtime(FILE *f, int64_t now) {
     fprintf(f,"n");
     fwrite(&now, sizeof(now), 1, f);
     fflush(f);
+}
+
+void 
+skynet_record_parse_now(FILE *f) {
+    uint64_t now = unpackNumberValue(f, 8);
+    skynet_record_push_nowtime(now);
 }
 
 //mq

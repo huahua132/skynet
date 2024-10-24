@@ -203,7 +203,7 @@ skynet_context_newsession(struct skynet_context *ctx) {
 
 	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
 	if (rf) {
-		skynet_record_newsession(ctx, rf, session);
+		skynet_record_newsession(rf, session);
 	}
 
 	return session;
@@ -292,7 +292,7 @@ dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	}
 	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
 	if (rf) {
-		skynet_record_output(ctx, rf, msg->source, type, msg->session, msg->data, sz);
+		skynet_record_output(rf, msg->source, type, msg->session, msg->data, sz);
 	}
 	++ctx->message_count;
 	int reserve_msg;
@@ -453,7 +453,7 @@ cmd_query(struct skynet_context * context, const char * param) {
 
 	FILE *rf = (FILE *)ATOM_LOAD(&context->recordfile);
 	if (rf) {
-		skynet_record_handle(context, rf, handle);
+		skynet_record_handle(rf, handle);
 	}
 
 	if (handle) {
@@ -667,7 +667,7 @@ cmd_recordon(struct skynet_context * context, const char * param) {
 	FILE *f = NULL;
 	FILE * lastf = (FILE *)ATOM_LOAD(&ctx->recordfile);
 	if (lastf == NULL) {
-		f = skynet_record_open(context, handle);
+		f = skynet_record_open(handle);
 		if (f) {
 			if (!ATOM_CAS_POINTER(&ctx->recordfile, 0, (uintptr_t)f)) {
 				// recordfile opens in other thread, close this one.
@@ -691,7 +691,7 @@ cmd_recordoff(struct skynet_context * context, const char * param) {
 	if (f) {
 		// recordfile may close in other thread
 		if (ATOM_CAS_POINTER(&ctx->recordfile, (uintptr_t)f, (uintptr_t)NULL)) {
-			skynet_record_close(context, f, handle);
+			skynet_record_close(f, handle);
 		}
 	}
 	skynet_context_release(ctx);
