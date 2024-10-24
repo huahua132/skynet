@@ -942,6 +942,12 @@ skynet_globalinit(void) {
 void 
 skynet_globalexit(void) {
 	pthread_key_delete(G_NODE.handle_key);
+	skynet_free(G_SESSION_Q);
+	skynet_free(G_HANDLE_Q);
+	skynet_free(G_SOCKETID_Q);
+	skynet_free(G_MATHSEEK_Q);
+	skynet_free(G_OSTIME_Q);
+	skynet_free(G_NOWTIME_Q);
 }
 
 void
