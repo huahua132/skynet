@@ -162,6 +162,7 @@ main(int argc, char *argv[]) {
 	config.logservice = optstring("logservice", "logger");
 	config.profile = optboolean("profile", 1);
 	config.recordfile = optstring("recordfile", "");
+	config.recordlimit = optint("recordlimit", 1024 * 1024 * 100);
 
 	skynet_start(&config);
 	skynet_globalexit();

@@ -462,7 +462,7 @@ lconnect(lua_State *L) {
 	const char * host = address_port(L, tmp, addr, 2, &port);
 	if (port == 0) {
 		if (rf) {
-			skynet_record_socketid(rf, -1);
+			skynet_record_socketid(ctx, rf, -1);
 		}
 		return luaL_error(L, "Invalid port");
 	}
@@ -471,7 +471,7 @@ lconnect(lua_State *L) {
 	lua_pushinteger(L, id);
 
 	if (rf) {
-		skynet_record_socketid(rf, id);
+		skynet_record_socketid(ctx, rf, id);
 	}
 	return 1;
 }
@@ -502,7 +502,7 @@ llisten(lua_State *L) {
 	int id = skynet_socket_listen(ctx, host,port,backlog);
 	if (id < 0) {
 		if (rf) {
-			skynet_record_socketid(rf, -1);
+			skynet_record_socketid(ctx, rf, -1);
 		}
 		return luaL_error(L, "Listen error");
 	}
@@ -510,7 +510,7 @@ llisten(lua_State *L) {
 	lua_pushinteger(L,id);
 	
 	if (rf) {
-		skynet_record_socketid(rf, id);
+		skynet_record_socketid(ctx, rf, id);
 	}
 	return 1;
 }
@@ -629,7 +629,7 @@ lbind(lua_State *L) {
 
 	FILE* rf = skynet_context_recordfile(ctx);
 	if (rf) {
-		skynet_record_socketid(rf, id);
+		skynet_record_socketid(ctx, rf, id);
 	}
 	return 1;
 }
@@ -674,13 +674,13 @@ ludp(lua_State *L) {
 	int id = skynet_socket_udp(ctx, host, port);
 	if (id < 0) {
 		if (rf) {
-			skynet_record_socketid(rf, -1);
+			skynet_record_socketid(ctx, rf, -1);
 		}
 		return luaL_error(L, "udp init failed");
 	}
 	
 	if (rf) {
-		skynet_record_socketid(rf, id);
+		skynet_record_socketid(ctx, rf, id);
 	}
 	lua_pushinteger(L, id);
 	return 1;
@@ -717,12 +717,12 @@ ludp_dial(lua_State *L){
 	FILE* rf = skynet_context_recordfile(ctx);
 	int id = skynet_socket_udp_dial(ctx, host, port);
 	if (id < 0){
-		skynet_record_socketid(rf, -1);
+		skynet_record_socketid(ctx, rf, -1);
 		return luaL_error(L, "udp dial host failed");
 	}
 
 	if (rf) {
-		skynet_record_socketid(rf, id);
+		skynet_record_socketid(ctx, rf, id);
 	}
 
 	lua_pushinteger(L, id);
@@ -742,13 +742,13 @@ ludp_listen(lua_State *L){
 	int id = skynet_socket_udp_listen(ctx, host, port);
 	if (id < 0){
 		if (rf) {
-			skynet_record_socketid(rf, -1);
+			skynet_record_socketid(ctx, rf, -1);
 		}
 		return luaL_error(L, "udp listen host failed");
 	}
 
 	if (rf) {
-		skynet_record_socketid(rf, id);
+		skynet_record_socketid(ctx, rf, id);
 	}
 
 	lua_pushinteger(L, id);

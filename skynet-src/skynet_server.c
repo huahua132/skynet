@@ -48,6 +48,8 @@ struct skynet_context {
 	struct message_queue *queue;
 	ATOM_POINTER logfile;
 	ATOM_POINTER recordfile;
+	int64_t record_limit;    //录像大小限制
+	int64_t record_count;    //录像记录长度
 	uint64_t cpu_cost;	// in microsec
 	uint64_t cpu_start;	// in microsec
 	char result[32];
@@ -153,6 +155,8 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->session_id = 0;
 	ATOM_INIT(&ctx->logfile, (uintptr_t)NULL);
 	ATOM_INIT(&ctx->recordfile, (uintptr_t)NULL);
+	ctx->record_limit = 0;
+	ctx->record_count = 0;
 
 	ctx->init = false;
 	ctx->endless = false;
@@ -203,7 +207,7 @@ skynet_context_newsession(struct skynet_context *ctx) {
 
 	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
 	if (rf) {
-		skynet_record_newsession(rf, session);
+		skynet_record_newsession(ctx, rf, session);
 	}
 
 	return session;
@@ -292,7 +296,7 @@ dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	}
 	FILE *rf = (FILE *)ATOM_LOAD(&ctx->recordfile);
 	if (rf) {
-		skynet_record_output(rf, msg->source, type, msg->session, msg->data, sz);
+		skynet_record_output(ctx, rf, msg->source, type, msg->session, msg->data, sz);
 	}
 	++ctx->message_count;
 	int reserve_msg;
@@ -453,7 +457,7 @@ cmd_query(struct skynet_context * context, const char * param) {
 
 	FILE *rf = (FILE *)ATOM_LOAD(&context->recordfile);
 	if (rf) {
-		skynet_record_handle(rf, handle);
+		skynet_record_handle(context, rf, handle);
 	}
 
 	if (handle) {
@@ -667,13 +671,22 @@ cmd_recordon(struct skynet_context * context, const char * param) {
 	FILE *f = NULL;
 	FILE * lastf = (FILE *)ATOM_LOAD(&ctx->recordfile);
 	if (lastf == NULL) {
-		f = skynet_record_open(handle);
-		if (f) {
-			if (!ATOM_CAS_POINTER(&ctx->recordfile, 0, (uintptr_t)f)) {
-				// recordfile opens in other thread, close this one.
-				fclose(f);
+		const char *record_limit_str = skynet_getenv("recordlimit");
+		char *endptr = NULL;
+		int64_t recordlimit = strtoll(record_limit_str, &endptr, 10);
+		if (endptr == NULL || *endptr != '\0') {
+			skynet_error(ctx, "Invalid recordlimit %s", record_limit_str);
+		} else {
+			ctx->record_limit = recordlimit;
+			f = skynet_record_open(ctx, handle);
+			if (f) {
+				if (!ATOM_CAS_POINTER(&ctx->recordfile, 0, (uintptr_t)f)) {
+					// recordfile opens in other thread, close this one.
+					fclose(f);
+				}
 			}
 		}
+		
 	}
 	skynet_context_release(ctx);
 	return NULL;
@@ -691,7 +704,7 @@ cmd_recordoff(struct skynet_context * context, const char * param) {
 	if (f) {
 		// recordfile may close in other thread
 		if (ATOM_CAS_POINTER(&ctx->recordfile, (uintptr_t)f, (uintptr_t)NULL)) {
-			skynet_record_close(f, handle);
+			skynet_record_close(ctx, f, handle);
 		}
 	}
 	skynet_context_release(ctx);
@@ -705,7 +718,7 @@ cmd_recordstart(struct skynet_context *context, const char* buffer) {
 		return NULL;
 	}
 
-	skynet_record_start(f, buffer);
+	skynet_record_start(context, f, buffer);
 	return NULL;
 }
 
@@ -1004,4 +1017,17 @@ skynet_record_push_nowtime(int64_t now) {
 int64_t 
 skynet_record_pop_nowtime() {
 	return skynet_record_mq_pop(G_NOWTIME_Q);
+}
+
+int 
+skynet_record_check_limit(struct skynet_context * ctx) {
+    if (ctx->record_count >= ctx->record_limit) {
+        return 0;
+    }
+    return 1;
+}
+
+void 
+skynet_record_add_limit_count(struct skynet_context * ctx, size_t len) {
+	ctx->record_count += len;
 }

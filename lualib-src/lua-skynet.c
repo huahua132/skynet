@@ -541,7 +541,7 @@ lrecordsetrandomseed(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
 	FILE *rf = skynet_context_recordfile(context);
 	if (rf) {
-		skynet_record_randseed(rf, x, y);
+		skynet_record_randseed(context, rf, x, y);
 	}
 	return 0;
 }
@@ -559,7 +559,7 @@ lrecordsetostime(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
 	FILE *rf = skynet_context_recordfile(context);
 	if (rf) {
-		skynet_record_ostime(rf, ostime);
+		skynet_record_ostime(context, rf, ostime);
 	}
 	return 0;
 }
@@ -577,7 +577,7 @@ lrecordsetnowtime(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
 	FILE *rf = skynet_context_recordfile(context);
 	if (rf) {
-		skynet_record_nowtime(rf, now);
+		skynet_record_nowtime(context, rf, now);
 	}
 	return 0;
 }

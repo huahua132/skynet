@@ -11,6 +11,7 @@ struct skynet_config {
 	const char * logger;
 	const char * logservice;
 	const char * recordfile;
+	int64_t recordlimit;
 };
 
 #define THREAD_WORKER 0

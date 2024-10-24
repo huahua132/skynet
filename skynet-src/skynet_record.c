@@ -21,7 +21,7 @@ static inline uint64_t unpackNumberValue(FILE* f, size_t len) {
     return value;
 }
 
-static int create_dir(const char *path) {
+static int create_dir(struct skynet_context* ctx, const char *path) {
     char buffer[256];
     char *pos = NULL;
     size_t len;
@@ -35,7 +35,7 @@ static int create_dir(const char *path) {
         if (*pos == '/') {
             *pos = '\0'; // 将分隔符临时替换为空字符
             if (mkdir(buffer, 0777) == -1 && errno != EEXIST) {
-                skynet_error(NULL, "Failed to create directory %s: %s\n", buffer, strerror(errno));
+                skynet_error(ctx, "Failed to create directory %s: %s\n", buffer, strerror(errno));
                 return -1; // 返回错误
             }
             *pos = '/'; // 还原分隔符
@@ -44,7 +44,7 @@ static int create_dir(const char *path) {
     
     // 创建最后一级目录
     if (mkdir(buffer, 0777) == -1 && errno != EEXIST) {
-        skynet_error(NULL, "Failed to create directory %s: %s\n", buffer, strerror(errno));
+        skynet_error(ctx, "Failed to create directory %s: %s\n", buffer, strerror(errno));
         return -1; // 返回错误
     }
 
@@ -52,13 +52,13 @@ static int create_dir(const char *path) {
 }
 
 FILE * 
-skynet_record_open(uint32_t handle) {
+skynet_record_open(struct skynet_context* ctx, uint32_t handle) {
 	const char * recordpath = skynet_getenv("recordpath");
 	if (recordpath == NULL)
 		return NULL;
 
-    if (create_dir(recordpath) != 0) {
-        skynet_error(NULL, "Failed to create directory structure for %s", recordpath);
+    if (create_dir(ctx, recordpath) != 0) {
+        skynet_error(ctx, "Failed to create directory structure for %s", recordpath);
         return NULL;
     }
 
@@ -74,9 +74,10 @@ skynet_record_open(uint32_t handle) {
         fprintf(f, "o");
         fwrite(&starttime, sizeof(starttime), 1, f);
         fwrite(&currenttime, sizeof(currenttime), 1, f);
-		fflush(f);
+
+        skynet_record_add_limit_count(ctx, sizeof(starttime) + sizeof(currenttime) + 1);
 	} else {
-		skynet_error(NULL, "Open record file %s fail %s", tmp, strerror(errno));
+		skynet_error(ctx, "Open record file %s fail %s", tmp, strerror(errno));
 	}
     
 	return f;
@@ -92,8 +93,8 @@ skynet_record_parse_open(FILE *f) {
 }
 
 void
-skynet_record_close(FILE *f, uint32_t handle) {
-	skynet_error(NULL, "Close record file :%08x", handle);
+skynet_record_close(struct skynet_context* ctx, FILE *f, uint32_t handle) {
+	skynet_error(ctx, "Close record file :%08x", handle);
     uint64_t currenttime = skynet_now();
     fprintf(f, "c");
     fwrite(&currenttime, sizeof(currenttime), 1, f);
@@ -107,7 +108,7 @@ skynet_record_parse_close(FILE *f) {
 }
 
 static void
-record_socket(FILE * f, struct skynet_socket_message * message, size_t sz) {
+record_socket(struct skynet_context* ctx, FILE * f, struct skynet_socket_message * message, size_t sz) {
     uint64_t ti = skynet_now();
     const char *buffer = NULL;
     if (message->buffer == NULL) {
@@ -129,7 +130,8 @@ record_socket(FILE * f, struct skynet_socket_message * message, size_t sz) {
     fwrite(&ti, sizeof(ti), 1, f);
     fwrite(&sz, sizeof(sz), 1, f);
     fwrite(buffer, sz, 1, f);
-    fflush(f);
+
+    skynet_record_add_limit_count(ctx, sizeof(message->type) + sizeof(message->id) + sizeof(message->ud) + sizeof(ti) + sizeof(sz) + sz + 1);
 }
 
 void 
@@ -139,7 +141,6 @@ skynet_record_parse_socket(FILE *f, uint32_t handle) {
     int ud = (int)unpackNumberValue(f, 4);
     uint64_t ti = unpackNumberValue(f, 8);
     size_t bufsz = (size_t)unpackNumberValue(f, 8);
-    printf("skynet_record_parse_socket >>> type[%d] id[%d] ud[%d] ti[%lu] bufsz[%lu]\n", type, id, ud, ti, bufsz);
     char *buffer = skynet_malloc(bufsz);
     if (bufsz > 0 && fread(buffer, bufsz, 1, f) != 1) {
         skynet_free(buffer);
@@ -182,9 +183,13 @@ skynet_record_parse_socket(FILE *f, uint32_t handle) {
 }
 
 void 
-skynet_record_output(FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz) {
+skynet_record_output(struct skynet_context* ctx, FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
+
     if (type == PTYPE_SOCKET) {
-        record_socket(f, buffer, sz);
+        record_socket(ctx, f, buffer, sz);
         return;
     }
     uint64_t ti = skynet_now();
@@ -195,7 +200,8 @@ skynet_record_output(FILE *f, uint32_t source, int type, int session, void * buf
     fwrite(&ti, sizeof(ti), 1, f);
     fwrite(&sz, sizeof(sz), 1, f);
     fwrite(buffer, sz, 1, f);
-    fflush(f);
+
+    skynet_record_add_limit_count(ctx, sizeof(source) + sizeof(type) + sizeof(session) + sizeof(ti) + sizeof(sz) + sz + 1);
 }
 
 void
@@ -223,19 +229,23 @@ skynet_record_parse_output(FILE *f, uint32_t handle) {
 }
 
 void
-skynet_record_start(FILE *f, const char* buffer) {
+skynet_record_start(struct skynet_context* ctx, FILE *f, const char* buffer) {
     size_t len = strlen(buffer);
     fprintf(f,"b");
     fwrite(&len, sizeof(len), 1, f);
     fwrite(buffer, len, 1, f);
-    fflush(f);
+
+    skynet_record_add_limit_count(ctx, sizeof(len) + len + 1);
 }
 
 void 
-skynet_record_newsession(FILE *f, int session) {
+skynet_record_newsession(struct skynet_context* ctx, FILE *f, int session) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
     fprintf(f,"s");
     fwrite(&session, sizeof(session), 1, f);
-    fflush(f);
+    skynet_record_add_limit_count(ctx, 5);
 }
 
 void 
@@ -245,10 +255,13 @@ skynet_record_parse_newsession(FILE *f) {
 }
 
 void 
-skynet_record_handle(FILE *f, uint32_t handle) {
+skynet_record_handle(struct skynet_context* ctx, FILE *f, uint32_t handle) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
     fprintf(f,"h");
     fwrite(&handle, sizeof(handle), 1, f);
-    fflush(f);
+    skynet_record_add_limit_count(ctx, 5);
 }
 
 void 
@@ -258,10 +271,13 @@ skynet_record_parse_handle(FILE *f) {
 }
 
 void 
-skynet_record_socketid(FILE *f, int id) {
+skynet_record_socketid(struct skynet_context* ctx, FILE *f, int id) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
     fprintf(f,"k");
     fwrite(&id, sizeof(id), 1, f);
-    fflush(f);
+    skynet_record_add_limit_count(ctx, 5);
 }
 
 void 
@@ -271,11 +287,14 @@ skynet_record_parse_socketid(FILE *f) {
 }
 
 void 
-skynet_record_randseed(FILE *f, int64_t x, int64_t y) {
+skynet_record_randseed(struct skynet_context* ctx, FILE *f, int64_t x, int64_t y) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
     fprintf(f,"r");
     fwrite(&x, sizeof(x), 1, f);
     fwrite(&y, sizeof(y), 1, f);
-    fflush(f);
+    skynet_record_add_limit_count(ctx, 17);
 }
 
 void 
@@ -286,10 +305,13 @@ skynet_record_parse_randseed(FILE *f) {
 }
 
 void 
-skynet_record_ostime(FILE *f, uint32_t ostime) {
+skynet_record_ostime(struct skynet_context* ctx, FILE *f, uint32_t ostime) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
     fprintf(f,"t");
     fwrite(&ostime, sizeof(ostime), 1, f);
-    fflush(f);
+    skynet_record_add_limit_count(ctx, 5);
 }
 
 void 
@@ -299,10 +321,13 @@ skynet_record_parse_ostime(FILE *f) {
 }
 
 void 
-skynet_record_nowtime(FILE *f, int64_t now) {
+skynet_record_nowtime(struct skynet_context* ctx, FILE *f, int64_t now) {
+    if (!skynet_record_check_limit(ctx)) {
+        return;
+    }
     fprintf(f,"n");
     fwrite(&now, sizeof(now), 1, f);
-    fflush(f);
+    skynet_record_add_limit_count(ctx, 9);
 }
 
 void 

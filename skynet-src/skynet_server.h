@@ -45,4 +45,7 @@ uint32_t skynet_record_pop_ostime();
 void skynet_record_push_nowtime(int64_t ostime);
 int64_t skynet_record_pop_nowtime();
 
+int skynet_record_check_limit(struct skynet_context * ctx);
+void skynet_record_add_limit_count(struct skynet_context * ctx, size_t len);
+
 #endif
