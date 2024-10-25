@@ -360,6 +360,7 @@ thread_record(void* p) {
 				skynet_error(NULL, "Can't launch service");
 				break;
 			}
+			skynet_set_recordhandle(handle);
 			skynet_free(start_args);
 		}
 

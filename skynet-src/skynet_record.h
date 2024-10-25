@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define SKYNET_RECORD_VERSION "1.0.1"
+#define SKYNET_RECORD_VERSION "1.0.2"
 
 struct record_intque {
 	int cap;

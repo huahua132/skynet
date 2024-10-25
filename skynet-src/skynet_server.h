@@ -48,4 +48,7 @@ int64_t skynet_record_pop_nowtime();
 int skynet_record_check_limit(struct skynet_context * ctx);
 void skynet_record_add_limit_count(struct skynet_context * ctx, size_t len);
 
+void skynet_set_recordhandle(uint32_t handle);
+uint32_t skynet_get_record_handle();
+
 #endif

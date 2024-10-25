@@ -70,6 +70,8 @@ struct skynet_node {
 	uint32_t monitor_exit;
 	pthread_key_t handle_key;
 	bool profile;	// default is on
+	//record
+	uint32_t recordhandle;
 };
 
 static struct skynet_node G_NODE;
@@ -912,6 +914,7 @@ skynet_globalinit(void) {
 	ATOM_INIT(&G_NODE.total , 0);
 	G_NODE.monitor_exit = 0;
 	G_NODE.init = 1;
+	G_NODE.recordhandle = 0;
 	if (pthread_key_create(&G_NODE.handle_key, NULL)) {
 		fprintf(stderr, "pthread_key_create failed");
 		exit(1);
@@ -1036,4 +1039,14 @@ skynet_record_check_limit(struct skynet_context * ctx) {
 void 
 skynet_record_add_limit_count(struct skynet_context * ctx, size_t len) {
 	ctx->record_count += len;
+}
+
+void 
+skynet_set_recordhandle(uint32_t handle) {
+	G_NODE.recordhandle = handle;
+}
+
+uint32_t 
+skynet_get_record_handle() {
+	return G_NODE.recordhandle;
 }

@@ -582,6 +582,13 @@ lrecordsetnowtime(lua_State *L) {
 	return 0;
 }
 
+static int
+lgetrecordhandle(lua_State *L) {
+	uint32_t handle = skynet_get_record_handle();
+	lua_pushinteger(L, handle);
+	return 1;
+}
+
 LUAMOD_API int
 luaopen_skynet_core(lua_State *L) {
 	luaL_checkversion(L);
@@ -606,6 +613,7 @@ luaopen_skynet_core(lua_State *L) {
 		{ "recordsetostime", lrecordsetostime },
 		{ "recordgetnowtime", lrecordgetnowtime },
 		{ "recordsetnowtime", lrecordsetnowtime },
+		{ "getrecordhandle", lgetrecordhandle },
 		{ NULL, NULL },
 	};
 
