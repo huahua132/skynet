@@ -207,7 +207,7 @@ skynet_record_output(struct skynet_context* ctx, FILE *f, uint32_t source, int t
 
 void
 skynet_record_parse_output(FILE *f, uint32_t handle) {
-    int source = (int)unpackNumberValue(f, 4);
+    int source = (uint32_t)unpackNumberValue(f, 4);
     int type = (int)unpackNumberValue(f, 4);
     int session = (int)unpackNumberValue(f, 4);
     uint64_t ti = unpackNumberValue(f, 8);
