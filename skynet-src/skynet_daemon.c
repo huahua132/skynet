@@ -108,6 +108,7 @@ daemon_init(const char *pidfile) {
 	}
 #endif
 
+#ifdef __linux__
 	pid = write_pid(pidfile);
 	if (pid == 0) {
 		return 1;
@@ -116,7 +117,7 @@ daemon_init(const char *pidfile) {
 	if (redirect_fds()) {
 		return 1;
 	}
-
+#endif
 	return 0;
 }
 
