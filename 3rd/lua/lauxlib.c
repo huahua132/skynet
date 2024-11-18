@@ -1314,7 +1314,7 @@ LUAMOD_API int luaopen_cache(lua_State *L) {
 #define PADDING_MODE_PKCS7 1
 #define PADDING_MODE_COUNT 2
 #define BUFFER_SIZE 256 // 设置读取的缓冲区大小
-#define FIRST_LINE "skynet-fly-encrycode\n" // 要比较的第一行内容
+#define FIRST_LINE "skynet-fly-encrycode" // 要比较的第一行内容
 
 /* the eight DES S-boxes */
 
@@ -1802,7 +1802,7 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *m
 
   char buffer[BUFFER_SIZE]; // 设置缓存以读取行
   // 读取第一行
-  if (fgets(buffer, sizeof(buffer), fp) == NULL) {
+  if (fread(buffer, 1, strlen(FIRST_LINE), fp) != 1) {
       fclose(fp);
       lua_pushfstring(L, "failed to read the first line from %s", filename);
       return LUA_ERRFILE; // 读取失败
@@ -1815,27 +1815,27 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *m
       return status; // 返回之前的状态
   }
 
-  // 获取文件大小
-  fseek(fp, 0, SEEK_END);
-  size_t fileSize = ftell(fp); // 获取文件大小
-  rewind(fp); // 将文件指针重置到开头
+  char encrySizeBuf[4];
+  memset(encrySizeBuf, 0, 4);
+  fread(encrySizeBuf, 1, 4, fp);
 
-  // 分配内存以读取加密数据
-  char* encryptedData = (char*)malloc(fileSize - strlen(buffer)); // 只需分配文件总大小减去第一行大小
+  size_t encrySize = encrySizeBuf[0] | encrySizeBuf[1]<<8 | encrySizeBuf[2]<<16 | encrySizeBuf[3]<<24;
+
+   // 分配内存以读取加密数据
+  char* encryptedData = (char*)malloc(encrySize); // 只需分配文件总大小减去第一行大小
   if (!encryptedData) {
       fclose(fp);
       lua_pushfstring(L, "memory allocation failed");
       return LUA_ERRMEM; // 内存分配失败
   }
 
-  fseek(fp, strlen(buffer), SEEK_SET); // 跳过第一行
-  fread(encryptedData, 1, fileSize - strlen(buffer), fp); // 读取剩余加密数据
+  fread(encryptedData, 1, encrySize, fp); // 读取剩余加密数据
   fclose(fp); // 关闭文件
   //printf("luaL_loadfilex file[%s] [%s] [%s]\n", filename, buffer, encryptedData);
   // 解密数据
   lua_settop(L, 0);  // 清空堆栈
   lua_pushlstring(L, ENCRY_KEY, strlen(ENCRY_KEY)); // 推入解密密钥
-  lua_pushlstring(L, encryptedData, fileSize - strlen(buffer)); // 推入加密数据
+  lua_pushlstring(L, encryptedData, encrySize); // 推入加密数据
   ldesdecode(L); // 自定义解密函数
 
   size_t decryptedSize = 0;
