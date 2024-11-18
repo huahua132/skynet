@@ -1314,7 +1314,7 @@ LUAMOD_API int luaopen_cache(lua_State *L) {
 #define PADDING_MODE_PKCS7 1
 #define PADDING_MODE_COUNT 2
 #define BUFFER_SIZE 256 // 设置读取的缓冲区大小
-#define FIRST_LINE "skynet-fly-encrycode" // 要比较的第一行内容
+#define FIRST_LINE "skynet-fly-encrycode\0" // 要比较的第一行内容
 
 /* the eight DES S-boxes */
 
@@ -1794,17 +1794,18 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *m
   }
   
   // 打开文件
-  FILE* fp = fopen(filename, "r");
+  FILE* fp = fopen(filename, "rb");
   if (!fp) {
       lua_pushfstring(L, "cannot open %s", filename);
       return LUA_ERRFILE;
   }
 
   char buffer[BUFFER_SIZE]; // 设置缓存以读取行
+  memset(buffer, 0, BUFFER_SIZE);
   // 读取第一行
-  if (fread(buffer, 1, strlen(FIRST_LINE), fp) != 1) {
+  if (fread(buffer, strlen(FIRST_LINE), 1, fp) != 1) {
       fclose(fp);
-      lua_pushfstring(L, "failed to read the first line from %s", filename);
+      lua_pushfstring(L, "failed to read the first line from %s len = %d", filename, strlen(FIRST_LINE));
       return LUA_ERRFILE; // 读取失败
   }
 
@@ -1812,26 +1813,27 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *m
   // 比较第一行
   if (strcmp(buffer, FIRST_LINE) != 0) {
       fclose(fp); // 不匹配，需关闭文件
+	  lua_pushfstring(L, "failed to strcmp first line %s", filename);
       return status; // 返回之前的状态
   }
 
-  char encrySizeBuf[4];
+  uint8_t encrySizeBuf[4];
   memset(encrySizeBuf, 0, 4);
-  fread(encrySizeBuf, 1, 4, fp);
+  fread(encrySizeBuf, 4, 1, fp);
 
-  size_t encrySize = encrySizeBuf[0] | encrySizeBuf[1]<<8 | encrySizeBuf[2]<<16 | encrySizeBuf[3]<<24;
-
+  size_t encrySize = (encrySizeBuf[3] | (encrySizeBuf[2] << 8) | (encrySizeBuf[1] << 16) | (encrySizeBuf[0] << 24));
+  //printf("%d %d %d %d encrySize=%d\n", encrySizeBuf[0], encrySizeBuf[1], encrySizeBuf[2], encrySizeBuf[3], encrySize);
    // 分配内存以读取加密数据
-  char* encryptedData = (char*)malloc(encrySize); // 只需分配文件总大小减去第一行大小
+  uint8_t* encryptedData = (uint8_t*)malloc(encrySize); // 只需分配文件总大小减去第一行大小
   if (!encryptedData) {
       fclose(fp);
       lua_pushfstring(L, "memory allocation failed");
       return LUA_ERRMEM; // 内存分配失败
   }
 
-  fread(encryptedData, 1, encrySize, fp); // 读取剩余加密数据
+  fread(encryptedData, encrySize, 1, fp);
+  //printf("bytesRead >>> %d\n", encrySize);
   fclose(fp); // 关闭文件
-  //printf("luaL_loadfilex file[%s] [%s] [%s]\n", filename, buffer, encryptedData);
   // 解密数据
   lua_settop(L, 0);  // 清空堆栈
   lua_pushlstring(L, ENCRY_KEY, strlen(ENCRY_KEY)); // 推入解密密钥
@@ -1847,7 +1849,7 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *m
   } else {
       decryptedData = luaL_checklstring(L, 3, &decryptedSize);
   }
-
+  //printf("decryptedData = %s \n", decryptedData);
   // 使用解密后的数据加载到Lua函数
   if (luaL_loadbuffer(L, decryptedData, decryptedSize, filename) != LUA_OK) {
       free(encryptedData);
