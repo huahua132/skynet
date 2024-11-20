@@ -263,7 +263,7 @@ thread_record(void* p) {
 		fseek(f, -sizeof(type), SEEK_CUR);
 		int is_msg = 0;
 		int is_start = 0;
-		void *start_args = NULL;
+		char *start_args = NULL;
 		pthread_mutex_lock(&m->mutex);
 		while (fread(&type, sizeof(type), 1, f) == 1) {
 			if (is_msg == 1 || is_start == 1) {
@@ -314,11 +314,12 @@ thread_record(void* p) {
 					hbuf[8] = '\0';
 					handle = (uint32_t)strtoul(hbuf, NULL, 16);
 					
-					start_args = skynet_malloc(len - 8);
+					start_args = (char *)skynet_malloc(len - 8 + 1);
 					if (fread(start_args, len - 8, 1, f) != 1) {
 						skynet_error(NULL, "Error source b");
 						break;
 					}
+					start_args[len - 8] = '\0';
 					
 					is_start = 1;
 					break;

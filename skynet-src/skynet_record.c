@@ -65,7 +65,7 @@ skynet_record_open(struct skynet_context* ctx, uint32_t handle) {
 	size_t sz = strlen(recordpath);
 	char tmp[sz + 32];
 	sprintf(tmp, "%s/%08x.record", recordpath, handle);
-	FILE *f = fopen(tmp, "w+");
+	FILE *f = fopen(tmp, "w+b");
 	if (f) {
 		uint32_t starttime = skynet_starttime();
 		uint64_t currenttime = skynet_now();
