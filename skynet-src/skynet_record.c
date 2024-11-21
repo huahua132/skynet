@@ -12,6 +12,9 @@
 #include <sys/stat.h>   // 包含 mkdir 函数的声明
 #include <sys/types.h>  // 包含类型定义
 
+#define PROTOCOL_UDP 1
+#define PROTOCOL_UDPv6 2
+
 static inline uint64_t unpackNumberValue(FILE* f, size_t len) {
     uint64_t value;
     if (fread(&value, len, 1, f) != 1) {
@@ -122,6 +125,17 @@ record_socket(struct skynet_context* ctx, FILE * f, struct skynet_socket_message
     } else {
         sz = message->ud;
         buffer = message->buffer;
+    }
+
+    if (message->type == SKYNET_SOCKET_TYPE_UDP) {
+        uint8_t protocol = buffer[message->ud];
+        if (protocol == PROTOCOL_UDP) {
+            sz = message->ud + 1 + 2 + 4;
+        } else if (protocol == PROTOCOL_UDPv6) {
+            sz = message->ud + 1 + 2 + 16;
+        } else {
+            skynet_error(NULL, "record_socket err protocol [%d]", protocol);
+        }
     }
 
     fprintf(f, "a");
