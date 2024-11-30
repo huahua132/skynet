@@ -92,16 +92,18 @@ redirect_fds() {
 
 int
 daemon_init(const char *pidfile) {
+#ifdef __APPLE__ || __linux__
 	int pid = check_pid(pidfile);
 
 	if (pid) {
 		fprintf(stderr, "Skynet is already running, pid = %d.\n", pid);
 		return 1;
 	}
+#endif
 
 #ifdef __APPLE__
 	fprintf(stderr, "'daemon' is deprecated: first deprecated in OS X 10.5 , use launchd instead.\n");
-#else
+#elif __linux__
 	if (daemon(1,1)) {
 		fprintf(stderr, "Can't daemonize.\n");
 		return 1;
