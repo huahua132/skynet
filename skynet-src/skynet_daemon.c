@@ -92,8 +92,9 @@ redirect_fds() {
 
 int
 daemon_init(const char *pidfile) {
-#ifdef __APPLE__ || __linux__
-	int pid = check_pid(pidfile);
+	int pid = 0;
+#if defined(__APPLE__) || defined(__linux__)
+	pid = check_pid(pidfile);
 
 	if (pid) {
 		fprintf(stderr, "Skynet is already running, pid = %d.\n", pid);

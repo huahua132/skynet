@@ -165,13 +165,13 @@ static void *
 thread_fasttimer(void *p) {
 	struct monitor * m = p;
 	skynet_initthread(THREAD_FAST_TIMER);
-	uint64_t remain_time;
+	int64_t remain_time;
 	uint32_t once_addtime;
 	for (;;) {
 		CHECK_ABORT
 		if (m->fast_time > 0) {
 			pthread_mutex_lock(&m->timemutex);
-			skynet_error(NULL,"fasttime begin");
+			skynet_error(NULL,"fasttime begin now_time= %lld fasttime = %lld once_add=%u",M->start_time + skynet_now(),m->fast_time,m->once_addtime);
 			for(;;) {
 				remain_time = m->fast_time - (M->start_time + skynet_now());
 				if (remain_time <= 0)break;
