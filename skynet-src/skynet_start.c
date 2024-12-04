@@ -244,7 +244,13 @@ thread_record(void* p) {
         skynet_error(NULL, "Error opening file: %s", m->recordfile);
         return NULL;
     }
+
+	fseek(f, 0, SEEK_END);
+	long flen = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
 	char version[256]; // 存储版本信息
+	float pre_progress = 0;
     if (fgets(version, sizeof(SKYNET_RECORD_VERSION), f) != NULL) {
         skynet_error(NULL, "Version:%s", version);
     }
@@ -254,7 +260,7 @@ thread_record(void* p) {
 		return NULL;
 	}
 
-	skynet_error(NULL, "start play record >>>> %s", m->recordfile);
+	skynet_error(NULL, "start play record >>> %s", m->recordfile);
 	char type;
 	uint32_t handle = 0;
     // 读取消息体
@@ -265,6 +271,14 @@ thread_record(void* p) {
 		int is_start = 0;
 		char *start_args = NULL;
 		pthread_mutex_lock(&m->mutex);
+
+		long cur = ftell(f);
+		float progress = ((double)cur / (double)flen) * 100;
+		if (progress - pre_progress >= 1) {
+			pre_progress = progress;
+			skynet_error(NULL, "record speed of progress[%0.0f%%] curindex[%d] total_len[%d]", progress, cur, flen);
+		}
+		
 		while (fread(&type, sizeof(type), 1, f) == 1) {
 			if (is_msg == 1 || is_start == 1) {
 				if (type != 's' && type != 'h' && type != 'k' && type != 'r' && type != 't' && type != 'n') {
@@ -369,7 +383,7 @@ thread_record(void* p) {
 		pthread_cond_wait(&m->workcond, &m->mutex);
 		pthread_mutex_unlock(&m->mutex);
 	}
-	skynet_error(NULL, "play record over >>>> %s", m->recordfile);
+	skynet_error(NULL, "play record over >>> %s", m->recordfile);
     fclose(f); // 关闭文件
 	return NULL;
 }

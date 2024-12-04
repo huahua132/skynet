@@ -680,7 +680,8 @@ cmd_recordon(struct skynet_context * context, const char * param) {
 			skynet_error(ctx, "Invalid recordlimit %s", record_limit_str);
 		} else {
 			ctx->record_limit = recordlimit;
-			f = skynet_record_open(ctx, handle);
+			param = strchr(param, ' ');
+			f = skynet_record_open(ctx, handle, param + 1);
 			if (f) {
 				if (!ATOM_CAS_POINTER(&ctx->recordfile, 0, (uintptr_t)f)) {
 					// recordfile opens in other thread, close this one.

@@ -55,7 +55,7 @@ static int create_dir(struct skynet_context* ctx, const char *path) {
 }
 
 FILE * 
-skynet_record_open(struct skynet_context* ctx, uint32_t handle) {
+skynet_record_open(struct skynet_context* ctx, uint32_t handle, const char* filename) {
 	const char * recordpath = skynet_getenv("recordpath");
 	if (recordpath == NULL)
 		return NULL;
@@ -65,9 +65,16 @@ skynet_record_open(struct skynet_context* ctx, uint32_t handle) {
         return NULL;
     }
 
+    size_t fn_sz = strlen(filename);
+    if (fn_sz > 128) {
+        skynet_error(ctx, "failed open record file filename length Need to be less than 128 file_name=%s fn_sz=%d", filename, fn_sz);
+        return NULL;
+    } 
+
 	size_t sz = strlen(recordpath);
-	char tmp[sz + 32];
-	sprintf(tmp, "%s/%08x.record", recordpath, handle);
+	char tmp[sz + 256];
+    memset(tmp, 0, sz + 256);
+	sprintf(tmp, "%s/%s.record", recordpath, filename);
 	FILE *f = fopen(tmp, "w+b");
 	if (f) {
 		uint32_t starttime = skynet_starttime();

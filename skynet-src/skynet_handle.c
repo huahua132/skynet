@@ -271,4 +271,20 @@ void
 skynet_handle_set_index(uint32_t handle) {
 	struct handle_storage *s = H;
 	s->handle_index = handle;
+
+	if (handle <= s->slot_size) return;
+
+	struct skynet_context ** new_slot = skynet_malloc(handle * sizeof(struct skynet_context *));
+	memset(new_slot, 0, handle * sizeof(struct skynet_context *));
+	int i;
+	for (i=0;i<s->slot_size;i++) {
+		if (s->slot[i]) {
+			int hash = skynet_context_handle(s->slot[i]) & (handle - 1);
+			assert(new_slot[hash] == NULL);
+			new_slot[hash] = s->slot[i];
+		}
+	}
+	skynet_free(s->slot);
+	s->slot = new_slot;
+	s->slot_size = handle;
 }

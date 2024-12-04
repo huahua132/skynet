@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define SKYNET_RECORD_VERSION "1.0.2"
+#define SKYNET_RECORD_VERSION "1.1.0"
 
 struct record_intque {
 	int cap;
@@ -16,7 +16,7 @@ struct record_intque {
 	int64_t *queue;
 };
 
-FILE * skynet_record_open(struct skynet_context* ctx, uint32_t handle);
+FILE * skynet_record_open(struct skynet_context* ctx, uint32_t handle, const char* filename);
 void skynet_record_close(struct skynet_context* ctx, FILE *f, uint32_t handle);
 void skynet_record_output(struct skynet_context* ctx, FILE *f, uint32_t source, int type, int session, void * buffer, size_t sz);
 void skynet_record_start(struct skynet_context* ctx, FILE *f, const char* buffer);
