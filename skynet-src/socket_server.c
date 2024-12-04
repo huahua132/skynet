@@ -802,6 +802,13 @@ send_list_udp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 		}
 		int err = sendto(s->fd, tmp->ptr, tmp->sz, 0, &sa.s, sasz);
 		if (err < 0) {
+#ifdef _WIN32
+		errno = WSAGetLastError();
+		if (errno == WSAEWOULDBLOCK)
+			errno = EAGAIN;
+		if (errno == WSAECONNRESET)
+			errno = EAGAIN;
+#endif
 			switch(errno) {
 			case EINTR:
 			case AGAIN_WOULDBLOCK:
@@ -1544,6 +1551,13 @@ forward_message_udp(struct socket_server *ss, struct socket *s, struct socket_lo
 	socklen_t slen = sizeof(sa);
 	int n = recvfrom(s->fd, ss->udpbuffer,MAX_UDP_PACKAGE,0,&sa.s,&slen);
 	if (n<0) {
+#ifdef _WIN32
+		errno = WSAGetLastError();
+		if (errno == WSAEWOULDBLOCK)
+			errno = EAGAIN;
+		if (errno == WSAECONNRESET)
+			errno = EAGAIN;
+#endif
 		switch(errno) {
 		case EINTR:
 		case AGAIN_WOULDBLOCK:
