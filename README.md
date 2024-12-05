@@ -13,3 +13,5 @@ The community is friendly and almost all contributors can speak English, so Engl
 3. 优化mongoAPI代码风格，统一成下划线。
 4. gate forward 命令断言检查改为返回true or false。
 5. skynet.lua 去掉对`coroutine.create`函数的局部引用。 `local coroutine_create = coroutine.create`，因为不去掉`luaPanda.lua`重写`coroutine.create`无法起效。
+6. 增加了服务录像功能。
+7. 兼容windows的一些适配修改。
