@@ -84,8 +84,9 @@ skynet_record_open(struct skynet_context* ctx, uint32_t handle, const char* file
         fprintf(f, "o");
         fwrite(&starttime, sizeof(starttime), 1, f);
         fwrite(&currenttime, sizeof(currenttime), 1, f);
-
-        skynet_record_add_limit_count(ctx, sizeof(starttime) + sizeof(currenttime) + 1);
+        uint32_t strseed = luaS_get_strseed();
+        fwrite(&strseed, sizeof(strseed), 1, f);
+        skynet_record_add_limit_count(ctx, sizeof(starttime) + sizeof(currenttime) + sizeof(strseed) + 1);
 	} else {
 		skynet_error(ctx, "Open record file %s fail %s", tmp, strerror(errno));
 	}
@@ -97,9 +98,11 @@ void
 skynet_record_parse_open(FILE *f) {
     uint32_t starttime = (uint32_t)unpackNumberValue(f, 4);
     uint64_t currenttime = unpackNumberValue(f, 8);
+    uint32_t strseed = (uint32_t)unpackNumberValue(f, 4);
+    
     skynet_timer_setstarttime(starttime);
 	skynet_timer_setcurrent(currenttime);
-    skynet_error(NULL ,"skynet_record_parse_open starttime[%d] currenttime[%llu]\n", starttime, currenttime);
+    skynet_error(NULL ,"skynet_record_parse_open starttime[%d] currenttime[%llu] strseed[%d]\n", starttime, currenttime, strseed);
 }
 
 void

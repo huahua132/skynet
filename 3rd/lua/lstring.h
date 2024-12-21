@@ -55,4 +55,7 @@ LUAI_FUNC TString *luaS_new (lua_State *L, const char *str);
 LUAI_FUNC TString *luaS_createlngstrobj (lua_State *L, size_t l);
 LUAI_FUNC void luaS_share(TString *ts);
 
+//record STRSEED
+LUAI_FUNC unsigned int luaS_set_strseed(unsigned int seed);
+LUAI_FUNC unsigned int luaS_get_strseed();
 #endif

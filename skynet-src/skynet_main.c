@@ -3,6 +3,7 @@
 #include "skynet_imp.h"
 #include "skynet_env.h"
 #include "skynet_server.h"
+#include "skynet_record.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 #include <lauxlib.h>
 #include <signal.h>
 #include <assert.h>
+#include <lstring.h>
 
 static int
 optint(const char *key, int opt) {
@@ -114,6 +116,87 @@ static const char * load_config = "\
 	return result\n\
 ";
 
+//尝试读取并设置lua strseed
+static int try_read_strseed(const char* config_file) {
+	FILE *f = fopen(config_file, "rb"); // 以二进制读取模式打开文件
+    if (f == NULL) {
+		fprintf(stderr, "Error opening file: %s", config_file);
+        return 1;
+    }
+
+	//遍历文件所有行
+	char line[1024];
+	char recordfile[1024];
+	int is_match = 0;
+	memset(recordfile, 0, sizeof(recordfile));
+	while (fgets(line, sizeof(line), f)) {
+		//查找recordfile
+		if (strstr(line, "recordfile") != NULL) {
+			//读取recordfile
+			sscanf(line, "recordfile = [[%[^]]]]", recordfile);
+			is_match = 1;
+			break;
+		}
+	}
+	fclose(f); // 关闭文件
+
+	if (is_match == 0) {
+		return 0;
+	}
+
+	//开始从recordfile读取strseed
+	f = fopen(recordfile, "rb"); // 以二进制读取模式打开文件
+	if (f == NULL) {
+		fprintf(stderr, "Error opening record file: %s", recordfile);
+		return 1;
+	}
+
+	char version[256]; // 存储版本信息
+	float pre_progress = 0;
+    if (fgets(version, sizeof(SKYNET_RECORD_VERSION), f) == NULL) {
+		fprintf(stderr, "read record version err: %s", recordfile);
+		return 1;
+    }
+
+	if (strcmp(version, SKYNET_RECORD_VERSION) != 0) {
+		fprintf(stderr, "record version not same curversion[%s] recordversion[%s]", version, SKYNET_RECORD_VERSION);
+		return 1;
+	}
+
+	char type;
+	if (fread(&type, sizeof(type), 1, f) != 1) {
+		fprintf(stderr, "read recordfile open err %s", recordfile);
+		return 1;
+	}
+
+	if (type != 'o') {
+		fprintf(stderr, "recordfile open err %s", recordfile);
+		return 1;
+	}
+
+	uint32_t starttime = 0;
+	if (fread(&starttime, sizeof(starttime), 1, f) != 1) {
+		fprintf(stderr, "read recordfile starttime err %s", recordfile);
+		return 1;
+	}
+
+	uint64_t currenttime = 0;
+	if (fread(&currenttime, sizeof(currenttime), 1, f) != 1) {
+		fprintf(stderr, "read recordfile currenttime err %s", recordfile);
+		return 1;
+	}
+
+	uint32_t strseed = 0;
+	if (fread(&strseed, sizeof(strseed), 1, f) != 1) {
+		fprintf(stderr, "read recordfile strseed err %s", recordfile);
+		return 1;
+	}
+
+	luaS_set_strseed(strseed);
+
+	return 0;
+} 
+
 int
 main(int argc, char *argv[]) {
 	const char * config_file = NULL ;
@@ -122,6 +205,10 @@ main(int argc, char *argv[]) {
 	} else {
 		fprintf(stderr, "Need a config file. Please read skynet wiki : https://github.com/cloudwu/skynet/wiki/Config\n"
 			"usage: skynet configfilename\n");
+		return 1;
+	}
+
+	if (try_read_strseed(config_file) != 0) {
 		return 1;
 	}
 
