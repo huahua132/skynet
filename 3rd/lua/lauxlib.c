@@ -1813,7 +1813,7 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename, const char *m
   // 比较第一行
   if (strcmp(buffer, FIRST_LINE) != 0) {
       fclose(fp); // 不匹配，需关闭文件
-	  lua_pushfstring(L, "failed to strcmp first line %s", filename);
+	  //lua_pushfstring(L, "failed to strcmp first line %s", filename);
       return status; // 返回之前的状态
   }
 
