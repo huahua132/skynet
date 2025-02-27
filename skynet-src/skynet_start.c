@@ -453,7 +453,7 @@ start(int thread, int is_playrecord, const char* recordfile) {
 
 	int len = 4;
 	if (is_playrecord == 1) {
-		create_thread(&pid[i+5], thread_record, m);
+		create_thread(&pid[thread+4], thread_record, m);
 		len = 5;
 	}
 
