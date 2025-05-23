@@ -163,7 +163,7 @@ struct request_listen {
 	int id;
 	int fd;
 	uintptr_t opaque;
-	char host[1];
+	// char host[1];
 };
 
 struct request_bind {
@@ -349,7 +349,7 @@ write_buffer_free(struct socket_server *ss, struct write_buffer *wb) {
 static void
 socket_keepalive(int fd) {
 	int keepalive = 1;
-	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive , sizeof(keepalive));  
+	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive , sizeof(keepalive));
 }
 
 static int
@@ -366,7 +366,7 @@ reserve_id(struct socket_server *ss) {
 			if (ATOM_CAS(&s->type, type_invalid, SOCKET_TYPE_RESERVE)) {
 				s->id = id;
 				s->protocol = PROTOCOL_UNKNOWN;
-				// socket_server_udp_connect may inc s->udpconncting directly (from other thread, before new_fd), 
+				// socket_server_udp_connect may inc s->udpconncting directly (from other thread, before new_fd),
 				// so reset it to 0 here rather than in new_fd.
 				ATOM_INIT(&s->udpconnecting, 0);
 				s->fd = -1;
@@ -386,23 +386,23 @@ clear_wb_list(struct wb_list *list) {
 	list->tail = NULL;
 }
 
-struct socket_server * 
+struct socket_server *
 socket_server_create(uint64_t time) {
 	int i;
 	int fd[2];
 	poll_fd efd = sp_create();
 	if (sp_invalid(efd)) {
-		skynet_error(NULL, "socket-server: create event pool failed.");
+		skynet_error(NULL, "socket-server error: create event pool failed.");
 		return NULL;
 	}
 	if (pipe(fd)) {
 		sp_release(efd);
-		skynet_error(NULL, "socket-server: create socket pair failed.");
+		skynet_error(NULL, "socket-server error: create socket pair failed.");
 		return NULL;
 	}
 	if (sp_add(efd, fd[0], NULL)) {
 		// add recvctrl_fd to event poll
-		skynet_error(NULL, "socket-server: can't add server fd to event pool.");
+		skynet_error(NULL, "socket-server error: can't add server fd to event pool.");
 		close(fd[0]);
 		close(fd[1]);
 		sp_release(efd);
@@ -520,7 +520,7 @@ force_close(struct socket_server *ss, struct socket *s, struct socket_lock *l, s
 	socket_unlock(l);
 }
 
-void 
+void
 socket_server_release(struct socket_server *ss) {
 	int i;
 	struct socket_message dummy;
@@ -796,7 +796,7 @@ send_list_udp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 		union sockaddr_all sa;
 		socklen_t sasz = udp_socket_address(s, udp->udp_address, &sa);
 		if (sasz == 0) {
-			skynet_error(NULL, "socket-server : udp (%d) type mismatch.", s->id);
+			skynet_error(NULL, "socket-server : udp (%d) error: type mismatch.", s->id);
 			drop_udp(ss, s, list, tmp);
 			return -1;
 		}
@@ -842,7 +842,7 @@ list_uncomplete(struct wb_list *s) {
 	struct write_buffer *wb = s->head;
 	if (wb == NULL)
 		return 0;
-	
+
 	return (void *)wb->ptr != wb->buffer;
 }
 
@@ -908,7 +908,7 @@ send_buffer_(struct socket_server *ss, struct socket *s, struct socket_lock *l, 
 			}
 			if (s->low.head)
 				return -1;
-		} 
+		}
 		// step 4
 		assert(send_buffer_empty(s) && s->wb_size == 0);
 
@@ -1039,7 +1039,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 		return -1;
 	}
 	if (type == SOCKET_TYPE_PLISTEN || type == SOCKET_TYPE_LISTEN) {
-		skynet_error(NULL, "socket-server: write to listen fd %d.", id);
+		skynet_error(NULL, "socket-server error: write to listen fd %d.", id);
 		so.free_func((void *)request->buffer);
 		return -1;
 	}
@@ -1055,7 +1055,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 			socklen_t sasz = udp_socket_address(s, udp_address, &sa);
 			if (sasz == 0) {
 				// udp type mismatch, just drop it.
-				skynet_error(NULL, "socket-server: udp socket (%d) type mismatch.", id);
+				skynet_error(NULL, "socket-server: udp socket (%d) error: type mismatch.", id);
 				so.free_func((void *)request->buffer);
 				return -1;
 			}
@@ -1457,7 +1457,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 		add_udp_socket(ss, (struct request_udp *)buffer);
 		return -1;
 	default:
-		skynet_error(NULL, "socket-server: Unknown ctrl %c.",type);
+		skynet_error(NULL, "socket-server error: Unknown ctrl %c.",type);
 		return -1;
 	};
 
@@ -1596,9 +1596,9 @@ forward_message_udp(struct socket_server *ss, struct socket *s, struct socket_lo
 static int
 report_connect(struct socket_server *ss, struct socket *s, struct socket_lock *l, struct socket_message *result) {
 	int error;
-	socklen_t len = sizeof(error);  
-	int code = getsockopt(s->fd, SOL_SOCKET, SO_ERROR, &error, &len);  
-	if (code < 0 || error) {  
+	socklen_t len = sizeof(error);
+	int code = getsockopt(s->fd, SOL_SOCKET, SO_ERROR, &error, &len);
+	if (code < 0 || error) {
 		error = code < 0 ? errno : error;
 		force_close(ss, s, l, result);
 		result->data = strerror(error);
@@ -1698,7 +1698,7 @@ report_accept(struct socket_server *ss, struct socket *s, struct socket_message 
 	return 1;
 }
 
-static inline void 
+static inline void
 clear_closed_event(struct socket_server *ss, struct socket_message * result, int type) {
 	if (type == SOCKET_CLOSE || type == SOCKET_ERR) {
 		int id = result->id;
@@ -1717,7 +1717,7 @@ clear_closed_event(struct socket_server *ss, struct socket_message * result, int
 }
 
 // return type
-int 
+int
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
 	for (;;) {
 		if (ss->checkctrl) {
@@ -1743,7 +1743,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 				ss->event_n = 0;
 				int err = errno;
 				if (err != EINTR) {
-					skynet_error(NULL, "socket-server: %s", strerror(err));
+					skynet_error(NULL, "socket-server error: %s", strerror(err));
 				}
 				continue;
 			}
@@ -1770,7 +1770,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 			break;
 		}
 		case SOCKET_TYPE_INVALID:
-			skynet_error(NULL, "socket-server: invalid socket");
+			skynet_error(NULL, "socket-server error: invalid socket");
 			break;
 		default:
 			if (e->read) {
@@ -1795,7 +1795,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 					--ss->event_index;
 				}
 				if (type == -1)
-					break;				
+					break;
 				return type;
 			}
 			if (e->write) {
@@ -1806,8 +1806,8 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 			}
 			if (e->error) {
 				int error;
-				socklen_t len = sizeof(error);  
-				int code = getsockopt(s->fd, SOL_SOCKET, SO_ERROR, &error, &len);  
+				socklen_t len = sizeof(error);
+				int code = getsockopt(s->fd, SOL_SOCKET, SO_ERROR, &error, &len);
 				const char * err = NULL;
 				if (code < 0) {
 					err = strerror(errno);
@@ -1854,7 +1854,7 @@ static int
 open_request(struct socket_server *ss, struct request_package *req, uintptr_t opaque, const char *addr, int port) {
 	int len = strlen(addr);
 	if (len + sizeof(req->u.open) >= 256) {
-		skynet_error(NULL, "socket-server : Invalid addr %s.",addr);
+		skynet_error(NULL, "socket-server error: Invalid addr %s.",addr);
 		return -1;
 	}
 	int id = reserve_id(ss);
@@ -1869,9 +1869,15 @@ open_request(struct socket_server *ss, struct request_package *req, uintptr_t op
 	return len;
 }
 
-int 
+static inline void
+request_init(struct request_package *req) {
+	memset(req, 0, sizeof(*req));
+}
+
+int
 socket_server_connect(struct socket_server *ss, uintptr_t opaque, const char * addr, int port) {
 	struct request_package request;
+	request_init(&request);
 	int len = open_request(ss, &request, opaque, addr, port);
 	if (len < 0)
 		return -1;
@@ -1885,7 +1891,7 @@ can_direct_write(struct socket *s, int id) {
 }
 
 // return -1 when error, 0 when success
-int 
+int
 socket_server_send(struct socket_server *ss, struct socket_sendbuffer *buf) {
 	int id = buf->id;
 	struct socket * s = &ss->slot[HASH_ID(id)];
@@ -1910,7 +1916,7 @@ socket_server_send(struct socket_server *ss, struct socket_sendbuffer *buf) {
 				union sockaddr_all sa;
 				socklen_t sasz = udp_socket_address(s, s->p.udp_address, &sa);
 				if (sasz == 0) {
-					skynet_error(NULL, "socket-server : set udp (%d) address first.", id);
+					skynet_error(NULL, "socket-server : set udp (%d) error: address first.", id);
 					socket_unlock(&l);
 					so.free_func((void *)buf->buffer);
 					return -1;
@@ -1935,6 +1941,7 @@ socket_server_send(struct socket_server *ss, struct socket_sendbuffer *buf) {
 			socket_unlock(&l);
 
 			struct request_package request;
+			request_init(&request);
 			request.u.send.id = id;
 			request.u.send.sz = 0;
 			request.u.send.buffer = NULL;
@@ -1950,6 +1957,7 @@ socket_server_send(struct socket_server *ss, struct socket_sendbuffer *buf) {
 	inc_sending_ref(s, id);
 
 	struct request_package request;
+	request_init(&request);
 	request.u.send.id = id;
 	request.u.send.buffer = clone_buffer(buf, &request.u.send.sz);
 
@@ -1958,7 +1966,7 @@ socket_server_send(struct socket_server *ss, struct socket_sendbuffer *buf) {
 }
 
 // return -1 when error, 0 when success
-int 
+int
 socket_server_send_lowpriority(struct socket_server *ss, struct socket_sendbuffer *buf) {
 	int id = buf->id;
 
@@ -1971,6 +1979,7 @@ socket_server_send_lowpriority(struct socket_server *ss, struct socket_sendbuffe
 	inc_sending_ref(s, id);
 
 	struct request_package request;
+	request_init(&request);
 	request.u.send.id = id;
 	request.u.send.buffer = clone_buffer(buf, &request.u.send.sz);
 
@@ -1981,12 +1990,14 @@ socket_server_send_lowpriority(struct socket_server *ss, struct socket_sendbuffe
 void
 socket_server_exit(struct socket_server *ss) {
 	struct request_package request;
+	request_init(&request);
 	send_request(ss, &request, 'X', 0);
 }
 
 void
 socket_server_close(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;
+	request_init(&request);
 	request.u.close.id = id;
 	request.u.close.shutdown = 0;
 	request.u.close.opaque = opaque;
@@ -1997,6 +2008,7 @@ socket_server_close(struct socket_server *ss, uintptr_t opaque, int id) {
 void
 socket_server_shutdown(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;
+	request_init(&request);
 	request.u.close.id = id;
 	request.u.close.shutdown = 1;
 	request.u.close.opaque = opaque;
@@ -2066,13 +2078,14 @@ do_listen(const char * host, int port, int backlog) {
 	return listen_fd;
 }
 
-int 
+int
 socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * addr, int port, int backlog) {
 	int fd = do_listen(addr, port, backlog);
 	if (fd < 0) {
 		return -1;
 	}
 	struct request_package request;
+	request_init(&request);
 	int id = reserve_id(ss);
 	if (id < 0) {
 		close(fd);
@@ -2088,6 +2101,7 @@ socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * ad
 int
 socket_server_bind(struct socket_server *ss, uintptr_t opaque, int fd) {
 	struct request_package request;
+	request_init(&request);
 	int id = reserve_id(ss);
 	if (id < 0)
 		return -1;
@@ -2101,6 +2115,7 @@ socket_server_bind(struct socket_server *ss, uintptr_t opaque, int fd) {
 void
 socket_server_start(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;
+	request_init(&request);
 	request.u.resumepause.id = id;
 	request.u.resumepause.opaque = opaque;
 	send_request(ss, &request, 'R', sizeof(request.u.resumepause));
@@ -2109,6 +2124,7 @@ socket_server_start(struct socket_server *ss, uintptr_t opaque, int id) {
 void
 socket_server_pause(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;
+	request_init(&request);
 	request.u.resumepause.id = id;
 	request.u.resumepause.opaque = opaque;
 	send_request(ss, &request, 'S', sizeof(request.u.resumepause));
@@ -2117,20 +2133,21 @@ socket_server_pause(struct socket_server *ss, uintptr_t opaque, int id) {
 void
 socket_server_nodelay(struct socket_server *ss, int id) {
 	struct request_package request;
+	request_init(&request);
 	request.u.setopt.id = id;
 	request.u.setopt.what = TCP_NODELAY;
 	request.u.setopt.value = 1;
 	send_request(ss, &request, 'T', sizeof(request.u.setopt));
 }
 
-void 
+void
 socket_server_userobject(struct socket_server *ss, struct socket_object_interface *soi) {
 	ss->soi = *soi;
 }
 
 // UDP
 
-int 
+int
 socket_server_udp(struct socket_server *ss, uintptr_t opaque, const char * addr, int port) {
 	int fd;
 	int family;
@@ -2155,12 +2172,13 @@ socket_server_udp(struct socket_server *ss, uintptr_t opaque, const char * addr,
 		return -1;
 	}
 	struct request_package request;
+	request_init(&request);
 	request.u.udp.id = id;
 	request.u.udp.fd = fd;
 	request.u.udp.opaque = opaque;
 	request.u.udp.family = family;
 
-	send_request(ss, &request, 'U', sizeof(request.u.udp));	
+	send_request(ss, &request, 'U', sizeof(request.u.udp));
 	return id;
 }
 
@@ -2186,6 +2204,7 @@ socket_server_udp_listen(struct socket_server *ss, uintptr_t opaque, const char*
 		return -1;
 	}
 	struct request_package request;
+	request_init(&request);
 	request.u.udp.id = id;
 	request.u.udp.fd = fd;
 	request.u.udp.opaque = opaque;
@@ -2237,6 +2256,7 @@ socket_server_udp_dial(struct socket_server *ss, uintptr_t opaque, const char* a
 	}
 
 	struct request_package request;
+	request_init(&request);
 	request.u.dial_udp.id = id;
 	request.u.dial_udp.fd = fd;
 	request.u.dial_udp.opaque = opaque;
@@ -2250,7 +2270,7 @@ socket_server_udp_dial(struct socket_server *ss, uintptr_t opaque, const char* a
 	return id;
 }
 
-int 
+int
 socket_server_udp_send(struct socket_server *ss, const struct socket_udp_address *addr, struct socket_sendbuffer *buf) {
 	int id = buf->id;
 	struct socket * s = &ss->slot[HASH_ID(id)];
@@ -2303,6 +2323,7 @@ socket_server_udp_send(struct socket_server *ss, const struct socket_udp_address
 	}
 
 	struct request_package request;
+	request_init(&request);
 	request.u.send_udp.send.id = id;
 	request.u.send_udp.send.buffer = clone_buffer(buf, &request.u.send_udp.send.sz);
 
@@ -2343,6 +2364,7 @@ socket_server_udp_connect(struct socket_server *ss, int id, const char * addr, i
 		return -1;
 	}
 	struct request_package request;
+	request_init(&request);
 	request.u.set_udp.id = id;
 	int protocol;
 
