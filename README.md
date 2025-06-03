@@ -19,4 +19,3 @@ The community is friendly and almost all contributors can speak English, so Engl
 6. 增加了服务录像功能。
 7. 兼容windows的一些适配修改。
 8. 新增tarce_log链路追踪。
-9. skynet.queue避免出现环。
