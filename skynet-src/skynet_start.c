@@ -73,6 +73,7 @@ static void *
 thread_socket(void *p) {
 	struct monitor * m = p;
 	skynet_initthread(THREAD_SOCKET);
+	skynet_handle_register_thread();
 	for (;;) {
 		int r = skynet_socket_poll();
 		if (r==0)
@@ -105,6 +106,7 @@ thread_monitor(void *p) {
 	int i;
 	int n = m->count;
 	skynet_initthread(THREAD_MONITOR);
+	skynet_handle_register_thread();
 	for (;;) {
 		CHECK_ABORT
 		for (i=0;i<n;i++) {
@@ -138,6 +140,7 @@ static void *
 thread_timer(void *p) {
 	struct monitor * m = p;
 	skynet_initthread(THREAD_TIMER);
+	skynet_handle_register_thread();
 	for (;;) {
 		skynet_updatetime();
 		skynet_socket_updatetime();
@@ -165,6 +168,7 @@ static void *
 thread_fasttimer(void *p) {
 	struct monitor * m = p;
 	skynet_initthread(THREAD_FAST_TIMER);
+	skynet_handle_register_thread();
 	int64_t remain_time;
 	uint32_t once_addtime;
 	for (;;) {
@@ -210,6 +214,7 @@ thread_worker(void *p) {
 	struct monitor *m = wp->m;
 	struct skynet_monitor *sm = m->m[id];
 	skynet_initthread(THREAD_WORKER);
+	skynet_handle_register_thread();
 	struct message_queue * q = NULL;
 	while (!m->quit) {
 		q = skynet_context_message_dispatch(sm, q, weight);
@@ -503,7 +508,7 @@ skynet_start(struct skynet_config * config) {
 		}
 	}
 	skynet_harbor_init(config->harbor);
-	skynet_handle_init(config->harbor);
+	skynet_handle_init(config->harbor, config->thread);
 	skynet_mq_init();
 	skynet_module_init(config->module_path);
 	skynet_timer_init();
