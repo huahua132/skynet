@@ -13,6 +13,7 @@ local sformat = string.format
 local debug_getinfo = debug.getinfo
 
 local g_is_trace = tonumber(c.command("GETENV", "trace")) == 1
+local g_is_luatrace = tonumber(c.command("GETENV", "luatrace")) == 1
 local g_recordfile = c.command("GETENV","recordfile")
 
 if g_recordfile ~= "" and c.addresscommand "REG" > 1 then
@@ -538,7 +539,7 @@ function skynet.timeout(ti, func)
 	local co = co_create_for_timeout(func, ti)
 	assert(session_id_coroutine[session] == nil)
 	session_id_coroutine[session] = co
-	local trace_tag = session_coroutine_luatrace[co] or skynet.create_lua_trace()
+	local trace_tag = session_coroutine_luatrace[co] or (g_is_luatrace and skynet.create_lua_trace())
 	if trace_tag then
 		session_coroutine_luatrace[co] = trace_tag
 		if g_is_trace then
@@ -1016,7 +1017,7 @@ function skynet.fork(func,...)
 	local t = fork_queue.t + 1
 	fork_queue.t = t
 	fork_queue[t] = co
-	local trace_tag = session_coroutine_luatrace[co] or skynet.create_lua_trace()
+	local trace_tag = session_coroutine_luatrace[co] or (g_is_luatrace and skynet.create_lua_trace())
 	if trace_tag then
 		session_coroutine_luatrace[co] = trace_tag
 		if g_is_trace then
@@ -1355,8 +1356,8 @@ function skynet.close_record()
 end
 
 -- lua trace 相关
---重写 lua 消息的 skynet.pack skynet.unpack
-do
+--重写 lua 消息的 skynet.pack skynet.unpack（仅当 luatrace=1 时启用）
+if g_is_luatrace then
 	local luap = proto[skynet.PTYPE_LUA]
 	local spack = skynet.pack
 	local spackstring = skynet.packstring
@@ -1365,7 +1366,7 @@ do
 		local trace_tag = session_coroutine_luatrace[running_thread]
 		local queue_tag = nil
 		if not g_is_send then
-			queue_tag = session_coroutine_queuetrace[running_thread] 
+			queue_tag = session_coroutine_queuetrace[running_thread]
 		end
 		return spack(trace_tag, queue_tag, ...)
 	end
@@ -1422,7 +1423,7 @@ end
 --设置trace_tag
 function skynet.set_trace_tag()
 	if not running_thread then return end
-	if not session_coroutine_luatrace[running_thread] then
+	if g_is_luatrace and not session_coroutine_luatrace[running_thread] then
 		session_coroutine_luatrace[running_thread] = skynet.create_lua_trace()
 	end
 end
