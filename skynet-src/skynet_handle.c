@@ -39,6 +39,7 @@ struct handle_storage {
 	int name_count;
 	struct handle_name *name;
 
+	// distributed reader slots
 	ATOM_INT thread_idx;
 	int rslot_count;
 	struct handle_reader_slot *rslots;
@@ -300,7 +301,8 @@ skynet_handle_namehandle(uint32_t handle, const char *name) {
 	return ret;
 }
 
-skynet_handle_register_thread(void) {
+void
+skynet_handle_register_thread() {
 	int idx = ATOM_FINC(&H->thread_idx);
 	if (idx < H->rslot_count) {
 		TLS_SLOT_IDX = idx;

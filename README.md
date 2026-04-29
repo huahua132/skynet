@@ -7,7 +7,7 @@ Skynet is a multi-user Lua framework supporting the actor model, often used in g
 The community is friendly and almost all contributors can speak English, so English speakers are welcome to ask questions in [Discussion](https://github.com/cloudwu/skynet/discussions), or submit issues in English.
 
 # 持续同步skynet版本
-目前版本 [e0bc6fe2d6ea05193f75a1467ecb7d9de748b23a](https://github.com/cloudwu/skynet/commit/e0bc6fe2d6ea05193f75a1467ecb7d9de748b23a)
+目前版本 https://github.com/cloudwu/skynet/commit/58774183a735069b494ff7c0093af02d4abe38e6
 
 # skynet_fly使用的skynet维护版本，对skynet做了一些优化改动
 

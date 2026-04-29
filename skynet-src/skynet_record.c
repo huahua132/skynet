@@ -15,6 +15,19 @@
 #define PROTOCOL_UDP 1
 #define PROTOCOL_UDPv6 2
 
+/* 全局 lua 字符串 hash 种子，供 snlua 在创建 lua_State 时使用 */
+static unsigned int g_strseed = 0;
+
+void
+skynet_set_strseed(unsigned int seed) {
+	g_strseed = seed;
+}
+
+unsigned int
+skynet_get_strseed(void) {
+	return g_strseed;
+}
+
 static inline uint64_t unpackNumberValue(FILE* f, size_t len) {
     uint64_t value;
     if (fread(&value, len, 1, f) != 1) {
@@ -84,7 +97,7 @@ skynet_record_open(struct skynet_context* ctx, uint32_t handle, const char* file
         fprintf(f, "o");
         fwrite(&starttime, sizeof(starttime), 1, f);
         fwrite(&currenttime, sizeof(currenttime), 1, f);
-        uint32_t strseed = luaS_get_strseed();
+        uint32_t strseed = g_strseed;
         fwrite(&strseed, sizeof(strseed), 1, f);
         skynet_record_add_limit_count(ctx, sizeof(starttime) + sizeof(currenttime) + sizeof(strseed) + 1);
 	} else {

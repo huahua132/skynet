@@ -13,7 +13,10 @@
 #include <lauxlib.h>
 #include <signal.h>
 #include <assert.h>
-#include <lstring.h>
+
+#ifndef SKYNET_MAXTHREAD
+#define SKYNET_MAXTHREAD 1024
+#endif
 
 static int
 optint(const char *key, int opt) {
@@ -192,7 +195,7 @@ static int try_read_strseed(const char* config_file) {
 		return 1;
 	}
 
-	luaS_set_strseed(strseed);
+	skynet_set_strseed(strseed);
 
 	return 0;
 } 
@@ -241,6 +244,10 @@ main(int argc, char *argv[]) {
 	lua_close(L);
 
 	config.thread =  optint("thread",8);
+	if (config.thread < 1 || config.thread > SKYNET_MAXTHREAD) {
+		fprintf(stderr, "Invalid thread %d , should be in [1,%d]\n", config.thread, SKYNET_MAXTHREAD);
+		return 1;
+	}
 	config.module_path = optstring("cpath","./cservice/?.so");
 	config.harbor = optint("harbor", 1);
 	config.bootstrap = optstring("bootstrap","snlua bootstrap");

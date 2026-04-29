@@ -7,6 +7,10 @@
 #include <stdio.h>
 #include <stdint.h>
 
+/* 全局 lua 字符串 hash 种子管理（供 snlua 和回放功能使用） */
+void skynet_set_strseed(unsigned int seed);
+unsigned int skynet_get_strseed(void);
+
 #define SKYNET_RECORD_VERSION "1.2.0"
 
 struct record_intque {
